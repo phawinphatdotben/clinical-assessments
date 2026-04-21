@@ -74,6 +74,32 @@ type WpbaFormProps = {
   config: WpbaFormConfig;
 };
 
+type SkillDirectoryRow = {
+  skill: string;
+  group: string | null;
+  amount_required: number | null;
+};
+
+const normalizeSkillDirectoryRow = (row: Record<string, unknown>): SkillDirectoryRow | null => {
+  const skill = pickStringValue(row, ["skill", "Skill"]);
+  if (!skill) {
+    return null;
+  }
+  const group = pickStringValue(row, ["group", "Group"]) || null;
+  const requiredRaw = row.amount_required ?? row.AmountRequired ?? row["amount required"];
+  const required =
+    typeof requiredRaw === "number"
+      ? requiredRaw
+      : typeof requiredRaw === "string" && requiredRaw.trim()
+        ? Number(requiredRaw)
+        : null;
+  return {
+    skill,
+    group,
+    amount_required: Number.isFinite(required as number) ? (required as number) : null,
+  };
+};
+
 const pickStringValue = (row: Record<string, unknown>, keys: string[]): string => {
   for (const key of keys) {
     const rawValue = row[key];
@@ -179,6 +205,9 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
   const [nameSearchQuery, setNameSearchQuery] = useState("");
   const [nameSearchResults, setNameSearchResults] = useState<Record<string, unknown>[]>([]);
   const [nameSearchLoading, setNameSearchLoading] = useState(false);
+  const [procedureSearchQuery, setProcedureSearchQuery] = useState("");
+  const [procedureSearchResults, setProcedureSearchResults] = useState<SkillDirectoryRow[]>([]);
+  const [procedureSearchLoading, setProcedureSearchLoading] = useState(false);
   const [showPreSubmitReview, setShowPreSubmitReview] = useState(false);
   const router = useRouter();
 
@@ -186,9 +215,6 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
     const fields: { key: string; label: string; type: string }[] = [];
     if (!FORM_TYPES_WITHOUT_PATIENT_HN.has(config.formType)) {
       fields.push({ key: "Patient HN", label: "Patient HN", type: "text" });
-    }
-    if (config.formType === "DOPS") {
-      fields.push({ key: "Procedure Name", label: "Procedure Name", type: "text" });
     }
     return fields;
   }, [config.formType]);
@@ -442,6 +468,54 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
     return () => clearTimeout(timer);
   }, [nameSearchQuery, lookupRole]);
 
+  useEffect(() => {
+    if (config.formType !== "DOPS") {
+      return;
+    }
+    const q = procedureSearchQuery.trim();
+    if (q.length < 2) {
+      setProcedureSearchResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setProcedureSearchLoading(true);
+      let normalizedRows: SkillDirectoryRow[] = [];
+      const { data: viewData, error: viewError } = await supabase
+        .from("dops_skills_catalog")
+        .select("skill, group, amount_required")
+        .ilike("skill", `%${q}%`)
+        .limit(20);
+      if (!viewError) {
+        normalizedRows = ((viewData as Record<string, unknown>[] | null) ?? [])
+          .map((raw) => normalizeSkillDirectoryRow(raw))
+          .filter((row): row is SkillDirectoryRow => Boolean(row))
+          .sort((a, b) => a.skill.localeCompare(b.skill));
+      } else {
+        const tables: Array<"skills" | "Skills"> = ["skills", "Skills"];
+        for (const tableName of tables) {
+          const { data, error } = await supabase
+            .from(tableName)
+            .select("*")
+            .or(`skill.ilike.%${q}%,Skill.ilike.%${q}%`)
+            .limit(20);
+          if (error) {
+            continue;
+          }
+          normalizedRows = ((data as Record<string, unknown>[] | null) ?? [])
+            .map((raw) => normalizeSkillDirectoryRow(raw))
+            .filter((row): row is SkillDirectoryRow => Boolean(row))
+            .sort((a, b) => a.skill.localeCompare(b.skill));
+          break;
+        }
+      }
+
+      setProcedureSearchLoading(false);
+      setProcedureSearchResults(normalizedRows.slice(0, 20));
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [config.formType, procedureSearchQuery]);
+
   const applyCounterpartyFromSearch = (row: Record<string, unknown>) => {
     if (lookupRole === "Staff") {
       const id = pickStringValue(row, ["Staff ID", "StaffID", "User", "user"]);
@@ -456,6 +530,12 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
     }
     setNameSearchQuery("");
     setNameSearchResults([]);
+  };
+
+  const applyProcedureFromSearch = (row: SkillDirectoryRow) => {
+    handleChange("Procedure Name", row.skill);
+    setProcedureSearchQuery(row.skill);
+    setProcedureSearchResults([]);
   };
 
   const validateForSubmit = useCallback((): string | null => {
@@ -752,6 +832,55 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
             <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 md:col-span-2">
               {counterpartyLookupMessage}
             </p>
+          ) : null}
+
+          {config.formType === "DOPS" ? (
+            <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50/90 p-4">
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-slate-700">
+                  Procedure Name (from DOPS logbook)
+                </span>
+                <input
+                  type="search"
+                  value={procedureSearchQuery || formData["Procedure Name"] || ""}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    setProcedureSearchQuery(next);
+                    handleChange("Procedure Name", next);
+                  }}
+                  placeholder="Type at least 2 characters to search procedure..."
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                />
+              </label>
+              {procedureSearchLoading ? (
+                <p className="mt-2 text-xs text-slate-500">Searching procedures...</p>
+              ) : null}
+              {procedureSearchQuery.trim().length >= 2 &&
+              !procedureSearchLoading &&
+              procedureSearchResults.length === 0 ? (
+                <p className="mt-2 text-xs text-slate-500">
+                  No matching procedure found in skills table. You can still type manually.
+                </p>
+              ) : null}
+              {procedureSearchResults.length > 0 ? (
+                <ul className="mt-2 max-h-52 space-y-1 overflow-y-auto rounded-md border border-slate-200 bg-white p-1">
+                  {procedureSearchResults.map((row, index) => (
+                    <li key={`${row.skill}-${row.group ?? ""}-${row.amount_required ?? ""}-${index}`}>
+                      <button
+                        type="button"
+                        onClick={() => applyProcedureFromSearch(row)}
+                        className="w-full rounded px-2 py-2 text-left text-sm transition hover:bg-slate-100"
+                      >
+                        <span className="font-medium text-slate-900">{row.skill}</span>
+                        <span className="mt-0.5 block text-xs text-slate-600">
+                          Group: {row.group || "—"} · Required: {row.amount_required ?? "—"}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
           ) : null}
 
           {generalFields.map((field) => (

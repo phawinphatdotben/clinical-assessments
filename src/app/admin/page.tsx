@@ -6,6 +6,7 @@ import { AdminStudentScoresExport } from "../components/admin-student-scores-exp
 import { AssessmentSearchBar } from "../components/assessment-search-bar";
 import { DashboardRoleTabs, type DashboardMainTab } from "../components/dashboard-role-tabs";
 import { DepartmentPortfolioChart } from "../components/department-portfolio-chart";
+import { DopsLogbookPanel } from "../components/dops-logbook-panel";
 import { DashboardNav } from "../components/dashboard-nav";
 import {
   aggregateCompletedWpbaByDepartment,
@@ -397,6 +398,8 @@ export default function AdminDashboardPage() {
             />
           </section>
         ) : null}
+
+        {mainTab === "logbook" ? <DopsLogbookPanel role="Admin" /> : null}
       </main>
     </div>
   );

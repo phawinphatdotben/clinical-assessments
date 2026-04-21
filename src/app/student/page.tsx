@@ -8,6 +8,7 @@ import { CreateAssessmentDashboardFoot, CreateAssessmentTabPanel } from "../comp
 import { DashboardRoleTabs, type DashboardMainTab } from "../components/dashboard-role-tabs";
 import { DepartmentPortfolioChart } from "../components/department-portfolio-chart";
 import { DashboardNav } from "../components/dashboard-nav";
+import { DopsLogbookPanel } from "../components/dops-logbook-panel";
 import {
   aggregateCompletedWpbaByDepartment,
   emptyUserDirectoryLookup,
@@ -64,6 +65,7 @@ export default function StudentDashboardPage() {
   const [historyLoadError, setHistoryLoadError] = useState<string | null>(null);
   const [mainTab, setMainTab] = useState<DashboardMainTab>("dashboard");
   const [personSearch, setPersonSearch] = useState("");
+  const [currentStudentId, setCurrentStudentId] = useState("");
   const [userLookup, setUserLookup] = useState<UserDirectoryLookup | null>(null);
   const [directoryError, setDirectoryError] = useState<string | null>(null);
 
@@ -151,6 +153,7 @@ export default function StudentDashboardPage() {
       const { studentId, errorMessage: profileErr } = await getStudentIdForCurrentUserWithError();
       if (!studentId) {
         if (!cancelled) {
+          setCurrentStudentId("");
           setProfileLoadError(profileErr);
           setReflectionRows([]);
           setHistoryRows([]);
@@ -160,6 +163,7 @@ export default function StudentDashboardPage() {
         }
         return;
       }
+      setCurrentStudentId(studentId);
 
       const [refRes, histResult] = await Promise.all([
         supabase
@@ -441,6 +445,8 @@ export default function StudentDashboardPage() {
             </>
           ) : null}
         </section>
+
+        {mainTab === "logbook" ? <DopsLogbookPanel role="Student" studentId={currentStudentId} /> : null}
       </main>
     </div>
   );

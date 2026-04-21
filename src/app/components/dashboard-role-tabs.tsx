@@ -1,6 +1,6 @@
 "use client";
 
-export type DashboardMainTab = "dashboard" | "portfolio" | "create";
+export type DashboardMainTab = "dashboard" | "portfolio" | "logbook" | "create";
 
 type DashboardRoleTabsProps = {
   active: DashboardMainTab;
@@ -34,6 +34,15 @@ export function DashboardRoleTabs({ active, onChange, variant = "admin" }: Dashb
         onClick={() => onChange("portfolio")}
       >
         Portfolio
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={active === "logbook"}
+        className={`${base} ${active === "logbook" ? activeCls : idleCls}`}
+        onClick={() => onChange("logbook")}
+      >
+        DOPS logbook
       </button>
       {variant === "role" ? (
         <button

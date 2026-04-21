@@ -1,0 +1,80 @@
+-- Seed / sync skills from provided CSV into public.skills
+-- Safe to re-run (uses upsert on primary key: skill).
+-- amount_required is intentionally NOT overwritten here so admin changes are preserved.
+
+insert into public.skills (skill, "group", enlisted_in_manual_skill)
+values
+  ('Abdominal paracentesis', '1.2', null),
+  ('Advanced cardio-pulmonary resuscitation , Basic life support', '1.1', 'Yes'),
+  ('Amniotomy', '1.1', null),
+  ('Anterior nasal packing', '1.1', null),
+  ('Arterial blood gas', '1.1', null),
+  ('Aspiration of bursa (elbow and ankle)', '1.2', null),
+  ('Aspiration of skin, subcutaneous tissue', '1.1', null),
+  ('Bag mask ventilation', '1.1', null),
+  ('Biopsy of skin, superficial mass', '1.2', null),
+  ('Breech assistance delivery', '1.2', null),
+  ('Capillary puncture', '1.1', null),
+  ('Cervical biopsy', '1.2', null),
+  ('Cervical dilatation and curettage', '1.2', null),
+  ('Contraceptive drug implantation and removal', '1.2', null),
+  ('Debride wound', '1.2', null),
+  ('Defibrillation', '1.1', 'Yes'),
+  ('Endotracheal intubation (Adult)', '1.1', 'Yes'),
+  ('Endotracheal intubation (PED)', '1.2', null),
+  ('Episiotomy', '1.1', null),
+  ('Excision of benign tumor and cyst of skin and subcutaneous tissue', '1.2', null),
+  ('External splinting/ slab', '1.1', 'Yes'),
+  ('FAST ultrasound in trauma', '1.1', null),
+  ('First aid management of injured patient', '1.1', null),
+  ('Foley catheter', '1.1', 'Yes'),
+  ('Incision and curettage (external hordeolum)', '1.2', null),
+  ('Incision and drainage', '1.1', 'Yes'),
+  ('Injection: intradermal, subcutaneous, intramuscular, intravenous', '1.1', null),
+  ('Insertion of intrauterine contraceptive device', '1.2', null),
+  ('Intercostal drainage', '1.1', null),
+  ('Intraosseous access', '1.2', null),
+  ('Intravenous fluid infusion/ peripheral intravenous access', '1.1', 'Yes'),
+  ('Intravenous/intramuscular injection', '1.1', 'Yes'),
+  ('Joint aspiration, knee', '1.2', null),
+  ('Local infiltration and digital nerve block', '1.1', null),
+  ('Lumbar puncture', '1.1', null),
+  ('Lumbar puncture (PED)', '1.2', null),
+  ('Manual removal of placenta', '1.2', null),
+  ('Manual vacuum aspiration', '1.2', null),
+  ('Needle aspiration of pneumothorax', '1.1', 'Yes'),
+  ('Neonatal resuscitation', '1.1', 'Yes'),
+  ('NG', '1.1', 'Yes'),
+  ('Normal labor', '1.1', 'Yes'),
+  ('Pap smear', '1.1', 'Yes'),
+  ('Plaster of Paris technique', '1.2', null),
+  ('Pleural paracentesis (thoracentesis)', '1.2', null),
+  ('Posterior nasal packing', '1.2', null),
+  ('Removal of foreign body from conjunctiva', '1.2', null),
+  ('Removal of foreign body from ear', '1.2', null),
+  ('Removal of foreign body from nose', '1.2', null),
+  ('Removal of foreign body from throat', '1.2', null),
+  ('Removal of foreign body from vagina in adult and child', '1.2', null),
+  ('Removal of intrauterine contraceptive device', '1.2', null),
+  ('Removal of nail or nail fold', '1.1', null),
+  ('Skin traction of limbs', '1.1', null),
+  ('Strengthening and stretching exercise', '1.1', null),
+  ('Stump bandaging', '1.1', null),
+  ('Suture', '1.1', 'Yes'),
+  ('Tubal ligation & resection', '1.2', null),
+  ('Ultrasonography, gravid uterus', '1.2', null),
+  ('Umbilical vein catheterization', '1.2', null),
+  ('Vacuum extraction', '1.2', null),
+  ('Vaginal packing', '1.1', null),
+  ('Venesection or central venous catheterization', '1.2', null),
+  ('Venipuncture', '1.1', null),
+  ('Wound dressing', '1.1', 'Yes')
+on conflict (skill) do update
+set
+  "group" = excluded."group",
+  enlisted_in_manual_skill = excluded.enlisted_in_manual_skill;
+
+-- Optional: set default required counts where currently null (edit as needed)
+-- update public.skills
+-- set amount_required = 1
+-- where amount_required is null;

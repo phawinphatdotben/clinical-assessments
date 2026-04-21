@@ -8,6 +8,7 @@ import { CreateAssessmentDashboardFoot, CreateAssessmentTabPanel } from "../comp
 import { DashboardRoleTabs, type DashboardMainTab } from "../components/dashboard-role-tabs";
 import { DepartmentPortfolioChart } from "../components/department-portfolio-chart";
 import { DashboardNav } from "../components/dashboard-nav";
+import { DopsLogbookPanel } from "../components/dops-logbook-panel";
 import {
   aggregateCompletedWpbaByDepartment,
   emptyUserDirectoryLookup,
@@ -314,6 +315,8 @@ export default function StaffDashboardPage() {
             </>
           ) : null}
         </section>
+
+        {mainTab === "logbook" ? <DopsLogbookPanel role="Staff" /> : null}
       </main>
     </div>
   );

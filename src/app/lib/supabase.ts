@@ -19,7 +19,12 @@ const globalForSupabase = globalThis as unknown as {
 
 export const supabase: SupabaseClient =
   globalForSupabase.__supabaseBrowserClient ??
-  createClient(supabaseUrl, supabaseAnonKey);
+  createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      detectSessionInUrl: true,
+      persistSession: true,
+    },
+  });
 
 if (typeof globalThis !== "undefined" && process.env.NODE_ENV !== "production") {
   globalForSupabase.__supabaseBrowserClient = supabase;
