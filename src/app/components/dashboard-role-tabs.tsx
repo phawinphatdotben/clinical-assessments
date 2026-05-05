@@ -1,5 +1,7 @@
 "use client";
 
+import { t, useUiLanguage } from "../lib/ui-language";
+
 export type DashboardMainTab = "dashboard" | "portfolio" | "logbook" | "create";
 
 type DashboardRoleTabsProps = {
@@ -10,6 +12,7 @@ type DashboardRoleTabsProps = {
 };
 
 export function DashboardRoleTabs({ active, onChange, variant = "admin" }: DashboardRoleTabsProps) {
+  const { language } = useUiLanguage();
   const base =
     "rounded-lg px-4 py-2 text-sm font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500";
   const activeCls = "bg-slate-900 text-white";
@@ -24,7 +27,7 @@ export function DashboardRoleTabs({ active, onChange, variant = "admin" }: Dashb
         className={`${base} ${active === "dashboard" ? activeCls : idleCls}`}
         onClick={() => onChange("dashboard")}
       >
-        Dashboard
+        {t(language, "Dashboard", "แดชบอร์ด")}
       </button>
       <button
         type="button"
@@ -33,7 +36,7 @@ export function DashboardRoleTabs({ active, onChange, variant = "admin" }: Dashb
         className={`${base} ${active === "portfolio" ? activeCls : idleCls}`}
         onClick={() => onChange("portfolio")}
       >
-        Portfolio
+        {t(language, "Portfolio", "ผลงาน")}
       </button>
       <button
         type="button"
@@ -42,7 +45,7 @@ export function DashboardRoleTabs({ active, onChange, variant = "admin" }: Dashb
         className={`${base} ${active === "logbook" ? activeCls : idleCls}`}
         onClick={() => onChange("logbook")}
       >
-        DOPS logbook
+        {t(language, "DOPS logbook", "สมุดบันทึก DOPS")}
       </button>
       {variant === "role" ? (
         <button
@@ -52,7 +55,7 @@ export function DashboardRoleTabs({ active, onChange, variant = "admin" }: Dashb
           className={`${base} ${active === "create" ? activeCls : idleCls}`}
           onClick={() => onChange("create")}
         >
-          Create assessment
+          {t(language, "Create assessment", "สร้างแบบประเมิน")}
         </button>
       ) : null}
     </div>

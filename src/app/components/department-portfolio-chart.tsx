@@ -1,6 +1,7 @@
 "use client";
 
 import type { DepartmentWpbaStack, WpbaPortfolioFormKey } from "../lib/assessment-filters";
+import { t, useUiLanguage } from "../lib/ui-language";
 
 const WPBA_PORTFOLIO_FORM_ORDER = ["MiniCEX", "CbD", "DOPS"] as const satisfies readonly WpbaPortfolioFormKey[];
 
@@ -21,6 +22,7 @@ export function DepartmentPortfolioChart({
   title = "Workplace-based assessments by department",
   emptyMessage = "No completed assessments to chart yet.",
 }: DepartmentPortfolioChartProps) {
+  const { language } = useUiLanguage();
   if (data.length === 0) {
     return (
       <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">{emptyMessage}</div>
@@ -31,11 +33,17 @@ export function DepartmentPortfolioChart({
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-      <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+      <h2 className="text-lg font-semibold text-slate-900">
+        {language === "th" && title === "Workplace-based assessments by department"
+          ? "จำนวนการประเมินตามแผนก"
+          : title}
+      </h2>
       <p className="mt-1 text-sm text-slate-600">
-        Only <strong>MiniCEX</strong>, <strong>CbD</strong> (Case-Based Discussion), and <strong>DOPS</strong> are
-        counted. Bar segments show the mix per <strong>Department/Rotation</strong>; bar length scales to the
-        department with the highest total.
+        {t(
+          language,
+          "Only MiniCEX, CbD (Case-Based Discussion), and DOPS are counted. Bar segments show the mix per Department/Rotation; bar length scales to the department with the highest total.",
+          "นับเฉพาะ MiniCEX, CbD และ DOPS เท่านั้น แต่ละสีในกราฟแท่งแสดงสัดส่วนของแต่ละแบบประเมินในแผนก/โรเตชัน และความยาวแท่งเทียบกับแผนกที่มีจำนวนรวมสูงสุด"
+        )}
       </p>
       <div className="mt-4 flex flex-wrap gap-4 text-xs text-slate-600">
         {WPBA_PORTFOLIO_FORM_ORDER.map((key) => (

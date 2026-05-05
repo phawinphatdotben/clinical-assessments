@@ -14,6 +14,8 @@ export const STUDENT_FEEDBACK_FORM_TYPES = [
   "DOPS",
   "Case-Based Discussion",
   "MiniCEX",
+  "Internal Medicine Health Education",
+  "OB/GYNE Health Education",
 ] as const;
 
 export type StudentFeedbackFormType = (typeof STUDENT_FEEDBACK_FORM_TYPES)[number];
@@ -332,6 +334,10 @@ export function getStudentFormSlugForAssessmentFormType(formType: string): strin
       return "cbd";
     case "MiniCEX":
       return "minicex";
+    case "Internal Medicine Health Education":
+      return "health-ed-im";
+    case "OB/GYNE Health Education":
+      return "health-ed-obgyn";
     default:
       return null;
   }

@@ -3,6 +3,8 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { StudentIdBarcodeScanButton } from "../../app/components/student-id-barcode-scan-button";
+import { CLINICAL_DEPARTMENT_ROTATIONS, escapePostgrestFilterValue } from "../../app/lib/department-rotations";
+import { SESSION_DEPARTMENT_ROTATION_STORAGE_KEY } from "../../app/lib/use-session-department-rotation";
 import { supabase } from "../../app/lib/supabase";
 import {
   CRITERIA_SCORE_SUM_COLUMN,
@@ -16,11 +18,85 @@ import {
   computeSelfReflectionDeadlineDateString,
   formTypeUsesStudentFeedback,
 } from "../../app/lib/student-feedback";
+import { t, useUiLanguage } from "../../app/lib/ui-language";
 import {
   EXTERN_TIER_LABELS,
   getExternScoreColumnName,
   getExternScoreTiers,
 } from "./extern-criteria-scores";
+import {
+  IM_HEALTH_ED_CRITERION_RUBRIC_THAI,
+  IM_HEALTH_ED_FORM_TYPE,
+  getImHealthEdScoreColumnName,
+  getImHealthEdScoreTiers,
+  getImHealthEdTierLabels,
+} from "./im-health-ed-criteria";
+import {
+  CASE_PRESENTATION_FORM_TYPE,
+  CASE_PRESENTATION_TIER_LABELS,
+  getCasePresentationScoreColumnName,
+  getCasePresentationScoreTiers,
+} from "./case-presentation-criteria";
+import {
+  INTERESTING_CASE_FORM_TYPE,
+  INTERESTING_CASE_TIER_LABELS,
+  getInterestingCaseScoreColumnName,
+  getInterestingCaseScoreTiers,
+} from "./interesting-case-criteria";
+import {
+  INTERESTING_CASE_GENERAL_FORM_TYPE,
+  INTERESTING_CASE_GENERAL_TIER_LABELS,
+  getInterestingCaseGeneralScoreColumnName,
+  getInterestingCaseGeneralScoreTiers,
+} from "./interesting-case-general-criteria";
+import {
+  OPD_ASSESSMENT_FORM_TYPE,
+  OPD_ASSESSMENT_TIER_LABELS,
+  getOpdAssessmentScoreColumnName,
+  getOpdAssessmentScoreTiers,
+} from "./opd-assessment-criteria";
+import {
+  ANTICIPATORY_GUIDANCE_FORM_TYPE,
+  ANTICIPATORY_GUIDANCE_TIER_LABELS,
+  getAnticipatoryGuidanceScoreColumnName,
+  getAnticipatoryGuidanceScoreTiers,
+} from "./anticipatory-guidance-criteria";
+import {
+  OR_ASSESSMENT_FORM_TYPE,
+  OR_ASSESSMENT_TIER_LABELS,
+  getOrAssessmentScoreColumnName,
+  getOrAssessmentScoreTiers,
+} from "./or-assessment-criteria";
+import {
+  OBGYN_HEALTH_EDUCATION_FORM_TYPE,
+  OBGYN_HEALTH_EDUCATION_MAX_SCORE,
+  OBGYN_HEALTH_EDUCATION_PASSING_SCORE,
+  OBGYN_HEALTH_EDUCATION_SCORE_LABELS,
+  OBGYN_HEALTH_EDUCATION_TOPIC_COLUMN,
+  OBGYN_HEALTH_EDUCATION_TOPICS,
+  getObgynHealthEducationScoreColumnName,
+  getObgynHealthEducationScoreTiers,
+  getObgynHealthEducationTopicRubric,
+  isObgynHealthEducationWarningSignsKey,
+} from "./obgyn-health-education-criteria";
+import {
+  IPD_CLINICAL_FORM_TYPE,
+  IPD_CLINICAL_TIER_LABELS,
+  getIpdClinicalScoreColumnName,
+  getIpdClinicalScoreTiers,
+} from "./ipd-clinical-criteria";
+import {
+  OPD_CLINICAL_FORM_TYPE,
+  OPD_CLINICAL_TIER_LABELS,
+  getOpdClinicalScoreColumnName,
+  getOpdClinicalScoreTiers,
+} from "./opd-clinical-criteria";
+import {
+  findDopsProcedureRubric,
+  getDopsProcedureAliasSuggestions,
+  getFormTypeRubric,
+  type RubricLink,
+} from "./rubric-links";
 import {
   JC_CRITERION_RUBRIC_THAI,
   JC_GENERIC_SCALE_RUBRIC_THAI,
@@ -50,6 +126,7 @@ import {
   getMiniCexScoreTiers,
 } from "./minicex-criteria";
 import { WpbaFormConfig } from "./wpba-config";
+import { maskFormUiLabel } from "./form-ui-labels-th";
 
 const criteriaFeedbackOptions = ["understandard", "standard", "exceptional"] as const;
 
@@ -191,11 +268,15 @@ const buildInitialFormState = (config: WpbaFormConfig, createdBy: "Staff" | "Stu
   if (config.formType === "DOPS") {
     baseState["Procedure Name"] = "";
   }
+  if (config.formType === OBGYN_HEALTH_EDUCATION_FORM_TYPE) {
+    baseState[OBGYN_HEALTH_EDUCATION_TOPIC_COLUMN] = "";
+  }
 
   return baseState;
 };
 
 export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
+  const { language } = useUiLanguage();
   const initialFormState = useMemo(() => buildInitialFormState(config, createdBy), [config, createdBy]);
   const [formData, setFormData] = useState<Record<string, string>>(initialFormState);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -209,7 +290,27 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
   const [procedureSearchResults, setProcedureSearchResults] = useState<SkillDirectoryRow[]>([]);
   const [procedureSearchLoading, setProcedureSearchLoading] = useState(false);
   const [showPreSubmitReview, setShowPreSubmitReview] = useState(false);
+  const [previewRubric, setPreviewRubric] = useState<RubricLink | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem(SESSION_DEPARTMENT_ROTATION_STORAGE_KEY);
+      const trimmed = stored?.trim() ?? "";
+      if (!trimmed) {
+        return;
+      }
+      queueMicrotask(() => {
+        setFormData((previous) =>
+          previous["Department/Rotation"]?.trim()
+            ? previous
+            : { ...previous, "Department/Rotation": trimmed },
+        );
+      });
+    } catch {
+      // ignore quota / private mode
+    }
+  }, []);
 
   const generalFields = useMemo(() => {
     const fields: { key: string; label: string; type: string }[] = [];
@@ -219,10 +320,64 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
     return fields;
   }, [config.formType]);
 
+  const selectedDopsRubric = useMemo(() => {
+    if (config.formType !== "DOPS") {
+      return null;
+    }
+    return findDopsProcedureRubric(formData["Procedure Name"] ?? "");
+  }, [config.formType, formData]);
+  const selectedFormRubric = useMemo(() => getFormTypeRubric(config.formType), [config.formType]);
+  const selectedObgynTopicRubric = useMemo(() => {
+    if (config.formType !== OBGYN_HEALTH_EDUCATION_FORM_TYPE) {
+      return null;
+    }
+    return getObgynHealthEducationTopicRubric(formData[OBGYN_HEALTH_EDUCATION_TOPIC_COLUMN] ?? "");
+  }, [config.formType, formData]);
+  const dopsAliasSuggestions = useMemo(() => getDopsProcedureAliasSuggestions(), []);
+  const criteriaScoreSumPreview = useMemo(
+    () => computeCriteriaScoreSumFromFormData(formData, config),
+    [formData, config]
+  );
+  const obgynHealthEducationTotal = useMemo(() => {
+    if (config.formType !== OBGYN_HEALTH_EDUCATION_FORM_TYPE) {
+      return null;
+    }
+    let total = 0;
+    let counted = 0;
+    for (const key of config.criteriaKeys) {
+      const raw = formData[key];
+      if (!raw?.trim()) {
+        continue;
+      }
+      const n = Number(raw);
+      if (!Number.isNaN(n)) {
+        total += n;
+        counted += 1;
+      }
+    }
+    return counted > 0 ? total : 0;
+  }, [config, formData]);
+  const obgynAutoPassFromScore =
+    obgynHealthEducationTotal != null
+      ? obgynHealthEducationTotal >= OBGYN_HEALTH_EDUCATION_PASSING_SCORE
+      : null;
+
   const lookupIdKey = createdBy === "Student" ? "Staff ID" : "Student ID";
   const lookupRole = createdBy === "Student" ? "Staff" : "Student";
 
   const handleChange = (key: string, value: string) => {
+    if (key === "Department/Rotation") {
+      try {
+        const trimmed = value.trim();
+        if (trimmed) {
+          sessionStorage.setItem(SESSION_DEPARTMENT_ROTATION_STORAGE_KEY, trimmed);
+        } else {
+          sessionStorage.removeItem(SESSION_DEPARTMENT_ROTATION_STORAGE_KEY);
+        }
+      } catch {
+        // ignore quota / private mode
+      }
+    }
     setFormData((previous) => ({
       ...previous,
       [key]: value,
@@ -412,7 +567,7 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
   useEffect(() => {
     const q = nameSearchQuery.trim();
     if (q.length < 2) {
-      setNameSearchResults([]);
+      queueMicrotask(() => setNameSearchResults([]));
       return;
     }
 
@@ -468,23 +623,30 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
     return () => clearTimeout(timer);
   }, [nameSearchQuery, lookupRole]);
 
+  const selectedDepartmentRotation = formData["Department/Rotation"]?.trim() ?? "";
+
   useEffect(() => {
     if (config.formType !== "DOPS") {
       return;
     }
     const q = procedureSearchQuery.trim();
     if (q.length < 2) {
-      setProcedureSearchResults([]);
+      queueMicrotask(() => setProcedureSearchResults([]));
       return;
     }
     const timer = setTimeout(async () => {
       setProcedureSearchLoading(true);
       let normalizedRows: SkillDirectoryRow[] = [];
-      const { data: viewData, error: viewError } = await supabase
+      const dept = selectedDepartmentRotation;
+      let catalogQuery = supabase
         .from("dops_skills_catalog")
         .select("skill, group, amount_required")
-        .ilike("skill", `%${q}%`)
-        .limit(20);
+        .ilike("skill", `%${q}%`);
+      if (dept) {
+        const escaped = escapePostgrestFilterValue(dept);
+        catalogQuery = catalogQuery.or(`department.is.null,department.eq."${escaped}"`);
+      }
+      const { data: viewData, error: viewError } = await catalogQuery.limit(20);
       if (!viewError) {
         normalizedRows = ((viewData as Record<string, unknown>[] | null) ?? [])
           .map((raw) => normalizeSkillDirectoryRow(raw))
@@ -514,7 +676,7 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
     }, 350);
 
     return () => clearTimeout(timer);
-  }, [config.formType, procedureSearchQuery]);
+  }, [config.formType, procedureSearchQuery, selectedDepartmentRotation]);
 
   const applyCounterpartyFromSearch = (row: Record<string, unknown>) => {
     if (lookupRole === "Staff") {
@@ -560,6 +722,21 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
     ) {
       return "Student Self-Reflection is required before you can submit this assessment.";
     }
+    if (
+      config.formType === OBGYN_HEALTH_EDUCATION_FORM_TYPE &&
+      !formData[OBGYN_HEALTH_EDUCATION_TOPIC_COLUMN]?.trim()
+    ) {
+      return "Health Education Topic is required for OB/GYNE Health Education.";
+    }
+    if (config.formType === "DOPS") {
+      const procedure = (formData["Procedure Name"] ?? "").trim();
+      if (!procedure) {
+        return "Procedure Name is required for DOPS.";
+      }
+      if (!findDopsProcedureRubric(procedure)) {
+        return "Please use an exact DOPS procedure name that has a rubric (see suggestions under Procedure Name).";
+      }
+    }
     return null;
   }, [formData, config, createdBy]);
 
@@ -567,6 +744,76 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
     (userEmail: string): Record<string, string> => {
       const evaluatorRole = formData["Evaluator Role"]?.trim() ?? "";
       const criteriaPayload = ((): Record<string, string> => {
+        if (config.formType === IM_HEALTH_ED_FORM_TYPE) {
+          const payload: Record<string, string> = {};
+          for (const key of config.criteriaKeys) {
+            payload[getImHealthEdScoreColumnName(key)] = formData[key] ?? "";
+          }
+          return payload;
+        }
+        if (config.formType === CASE_PRESENTATION_FORM_TYPE) {
+          const payload: Record<string, string> = {};
+          for (const key of config.criteriaKeys) {
+            payload[getCasePresentationScoreColumnName(key)] = formData[key] ?? "";
+          }
+          return payload;
+        }
+        if (config.formType === INTERESTING_CASE_FORM_TYPE) {
+          const payload: Record<string, string> = {};
+          for (const key of config.criteriaKeys) {
+            payload[getInterestingCaseScoreColumnName(key)] = formData[key] ?? "";
+          }
+          return payload;
+        }
+        if (config.formType === INTERESTING_CASE_GENERAL_FORM_TYPE) {
+          const payload: Record<string, string> = {};
+          for (const key of config.criteriaKeys) {
+            payload[getInterestingCaseGeneralScoreColumnName(key)] = formData[key] ?? "";
+          }
+          return payload;
+        }
+        if (config.formType === OPD_ASSESSMENT_FORM_TYPE) {
+          const payload: Record<string, string> = {};
+          for (const key of config.criteriaKeys) {
+            payload[getOpdAssessmentScoreColumnName(key)] = formData[key] ?? "";
+          }
+          return payload;
+        }
+        if (config.formType === ANTICIPATORY_GUIDANCE_FORM_TYPE) {
+          const payload: Record<string, string> = {};
+          for (const key of config.criteriaKeys) {
+            payload[getAnticipatoryGuidanceScoreColumnName(key)] = formData[key] ?? "";
+          }
+          return payload;
+        }
+        if (config.formType === OR_ASSESSMENT_FORM_TYPE) {
+          const payload: Record<string, string> = {};
+          for (const key of config.criteriaKeys) {
+            payload[getOrAssessmentScoreColumnName(key)] = formData[key] ?? "";
+          }
+          return payload;
+        }
+        if (config.formType === OBGYN_HEALTH_EDUCATION_FORM_TYPE) {
+          const payload: Record<string, string> = {};
+          for (const key of config.criteriaKeys) {
+            payload[getObgynHealthEducationScoreColumnName(key)] = formData[key] ?? "";
+          }
+          return payload;
+        }
+        if (config.formType === OPD_CLINICAL_FORM_TYPE) {
+          const payload: Record<string, string> = {};
+          for (const key of config.criteriaKeys) {
+            payload[getOpdClinicalScoreColumnName(key)] = formData[key] ?? "";
+          }
+          return payload;
+        }
+        if (config.formType === IPD_CLINICAL_FORM_TYPE) {
+          const payload: Record<string, string> = {};
+          for (const key of config.criteriaKeys) {
+            payload[getIpdClinicalScoreColumnName(key)] = formData[key] ?? "";
+          }
+          return payload;
+        }
         if (config.formType === "Extern Clinical Assessment") {
           const payload: Record<string, string> = {};
           for (const key of config.criteriaKeys) {
@@ -641,6 +888,10 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
           evaluatorRole === "Intern" || evaluatorRole === "Nurse"
             ? (formData["Evaluator Name"] ?? "").trim()
             : "";
+      }
+      if (config.formType === OBGYN_HEALTH_EDUCATION_FORM_TYPE) {
+        assessmentPayload[OBGYN_HEALTH_EDUCATION_TOPIC_COLUMN] =
+          (formData[OBGYN_HEALTH_EDUCATION_TOPIC_COLUMN] ?? "").trim();
       }
 
       if (formTypeUsesStudentFeedback(config.formType)) {
@@ -719,7 +970,7 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
   return (
     <form onSubmit={handleFormSubmit} className="mx-auto w-full max-w-5xl space-y-6 p-4 md:p-6">
       <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-slate-900">General Info</h2>
+        <h2 className="text-lg font-semibold text-slate-900">{t(language, "General Info", "ข้อมูลทั่วไป")}</h2>
         <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
           <label className="block">
             <span className="mb-1 block text-sm font-medium text-slate-700">Student ID</span>
@@ -880,6 +1131,93 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
                   ))}
                 </ul>
               ) : null}
+              {selectedDopsRubric ? (
+                <div className="mt-3 rounded-lg border border-indigo-200 bg-indigo-50/90 px-3 py-2 text-sm text-indigo-900">
+                  <p className="font-medium">{selectedDopsRubric.title}</p>
+                  <div className="mt-1 flex flex-wrap gap-3 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewRubric(selectedDopsRubric)}
+                      className="rounded border border-indigo-300 bg-white px-2 py-1 font-medium text-indigo-900 transition hover:bg-indigo-100"
+                    >
+                      Preview rubric
+                    </button>
+                    <a
+                      href={selectedDopsRubric.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline underline-offset-2 hover:text-indigo-700"
+                    >
+                      Open PDF ↗
+                    </a>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  <p className="font-medium">
+                    No exact rubric match yet. Select one of these exact names:
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {dopsAliasSuggestions.map((name) => (
+                      <button
+                        key={name}
+                        type="button"
+                        onClick={() => {
+                          handleChange("Procedure Name", name);
+                          setProcedureSearchQuery(name);
+                          setProcedureSearchResults([]);
+                        }}
+                        className="rounded-full border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-medium text-amber-900 transition hover:bg-amber-100"
+                      >
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : null}
+          {config.formType === OBGYN_HEALTH_EDUCATION_FORM_TYPE ? (
+            <div className="md:col-span-2 rounded-lg border border-teal-200 bg-teal-50/90 p-4">
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-slate-700">
+                  Health Education Topic
+                </span>
+                <select
+                  value={formData[OBGYN_HEALTH_EDUCATION_TOPIC_COLUMN] ?? ""}
+                  onChange={(event) => handleChange(OBGYN_HEALTH_EDUCATION_TOPIC_COLUMN, event.target.value)}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                >
+                  <option value="">Select topic</option>
+                  {OBGYN_HEALTH_EDUCATION_TOPICS.map((topic) => (
+                    <option key={topic} value={topic}>
+                      {topic}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {selectedObgynTopicRubric ? (
+                <div className="mt-2 rounded-lg border border-teal-300 bg-white px-3 py-2 text-xs text-teal-900">
+                  <p className="font-medium">{selectedObgynTopicRubric.title}</p>
+                  <div className="mt-1 flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewRubric(selectedObgynTopicRubric)}
+                      className="rounded border border-teal-300 bg-teal-50 px-2 py-1 font-medium transition hover:bg-teal-100"
+                    >
+                      Preview topic rubric
+                    </button>
+                    <a
+                      href={selectedObgynTopicRubric.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline underline-offset-2 hover:text-teal-700"
+                    >
+                      Open topic PDF ↗
+                    </a>
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -902,7 +1240,7 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
               onChange={(event) => handleChange("Hospital", event.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500"
             >
-              <option value="">Select hospital</option>
+              <option value="">{t(language, "Select hospital", "เลือกโรงพยาบาล")}</option>
               <option value="NPH">NPH</option>
               <option value="CRA">CRA</option>
               <option value="PBH">PBH</option>
@@ -916,12 +1254,12 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
               onChange={(event) => handleChange("Department/Rotation", event.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500"
             >
-              <option value="">Select department</option>
-              <option value="Internal Medicine">Internal Medicine</option>
-              <option value="Sx/Ortho/ER">Sx/Ortho/ER</option>
-              <option value="Pediatrics">Pediatrics</option>
-              <option value="OB/GYN">OB/GYN</option>
-              <option value="ComMed/FamMed">ComMed/FamMed</option>
+              <option value="">{t(language, "Select department", "เลือกแผนก")}</option>
+              {CLINICAL_DEPARTMENT_ROTATIONS.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
             </select>
           </label>
 
@@ -932,7 +1270,7 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
               onChange={(event) => handleChange("Evaluator Role", event.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500"
             >
-              <option value="">Select evaluator role</option>
+              <option value="">{t(language, "Select evaluator role", "เลือกบทบาทผู้ประเมิน")}</option>
               <option value="Staff">Staff</option>
               <option value="Intern">Intern</option>
               <option value="Nurse">Nurse</option>
@@ -961,7 +1299,7 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
               onChange={(event) => handleChange("Setting", event.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500"
             >
-              <option value="">Select setting</option>
+              <option value="">{t(language, "Select setting", "เลือกสถานที่ประเมิน")}</option>
               <option value="IPD">IPD</option>
               <option value="OPD">OPD</option>
               <option value="ER">ER</option>
@@ -975,7 +1313,7 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
               onChange={(event) => handleChange("Case Complexity", event.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500"
             >
-              <option value="">Select complexity</option>
+              <option value="">{t(language, "Select complexity", "เลือกระดับความซับซ้อน")}</option>
               <option value="Low">Low</option>
               <option value="Medium">Medium</option>
               <option value="High">High</option>
@@ -1054,10 +1392,244 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
             </div>
           </div>
         ) : null}
+        {config.formType === IM_HEALTH_ED_FORM_TYPE ? (
+          <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50/90 p-4 text-sm text-slate-800">
+            <p className="font-semibold text-slate-900">
+              Internal Medicine · Health education evaluation (CHMD 7403)
+            </p>
+            <p className="mt-2 text-slate-700">
+              Section 1: Health education skills (4 items). Section 2: Communication + Professionalism (6-point
+              checklist scored by band). Stored scores use tiers 1–4 as on the PDF.
+            </p>
+            {selectedFormRubric ? (
+              <div className="mt-2 flex flex-wrap gap-3 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setPreviewRubric(selectedFormRubric)}
+                  className="rounded border border-emerald-300 bg-white px-2 py-1 font-medium text-emerald-900 transition hover:bg-emerald-100"
+                >
+                  Preview rubric
+                </button>
+                <a
+                  href={selectedFormRubric.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-emerald-900 underline underline-offset-2 hover:text-emerald-800"
+                >
+                  Open official rubric PDF ↗
+                </a>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {config.formType === CASE_PRESENTATION_FORM_TYPE ? (
+          <div className="mt-4 rounded-lg border border-indigo-200 bg-indigo-50/80 p-4 text-sm text-slate-800">
+            <p className="font-semibold text-slate-900">Case Presentation rubric</p>
+            {selectedFormRubric ? (
+              <div className="mt-2 flex flex-wrap gap-3 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setPreviewRubric(selectedFormRubric)}
+                  className="rounded border border-indigo-300 bg-white px-2 py-1 font-medium text-indigo-900 transition hover:bg-indigo-100"
+                >
+                  Preview rubric
+                </button>
+                <a
+                  href={selectedFormRubric.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-indigo-900 underline underline-offset-2 hover:text-indigo-800"
+                >
+                  Open rubric PDF ↗
+                </a>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {config.formType === INTERESTING_CASE_FORM_TYPE ? (
+          <div className="mt-4 rounded-lg border border-violet-200 bg-violet-50/80 p-4 text-sm text-slate-800">
+            <p className="font-semibold text-slate-900">Interesting Case Presentation rubric</p>
+            {selectedFormRubric ? (
+              <div className="mt-2 flex flex-wrap gap-3 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setPreviewRubric(selectedFormRubric)}
+                  className="rounded border border-violet-300 bg-white px-2 py-1 font-medium text-violet-900 transition hover:bg-violet-100"
+                >
+                  Preview rubric
+                </button>
+                <a
+                  href={selectedFormRubric.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-violet-900 underline underline-offset-2 hover:text-violet-800"
+                >
+                  Open rubric PDF ↗
+                </a>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {config.formType === INTERESTING_CASE_GENERAL_FORM_TYPE ? (
+          <div className="mt-4 rounded-lg border border-violet-200 bg-violet-50/80 p-4 text-sm text-slate-800">
+            <p className="font-semibold text-slate-900">Interesting Case Presentation (General) rubric</p>
+            {selectedFormRubric ? (
+              <div className="mt-2 flex flex-wrap gap-3 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setPreviewRubric(selectedFormRubric)}
+                  className="rounded border border-violet-300 bg-white px-2 py-1 font-medium text-violet-900 transition hover:bg-violet-100"
+                >
+                  Preview rubric
+                </button>
+                <a
+                  href={selectedFormRubric.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-violet-900 underline underline-offset-2 hover:text-violet-800"
+                >
+                  Open rubric PDF ↗
+                </a>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {config.formType === OPD_ASSESSMENT_FORM_TYPE ? (
+          <div className="mt-4 rounded-lg border border-cyan-200 bg-cyan-50/80 p-4 text-sm text-slate-800">
+            <p className="font-semibold text-slate-900">OPD Assessment rubric</p>
+            {selectedFormRubric ? (
+              <div className="mt-2 flex flex-wrap gap-3 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setPreviewRubric(selectedFormRubric)}
+                  className="rounded border border-cyan-300 bg-white px-2 py-1 font-medium text-cyan-900 transition hover:bg-cyan-100"
+                >
+                  Preview rubric
+                </button>
+                <a
+                  href={selectedFormRubric.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-cyan-900 underline underline-offset-2 hover:text-cyan-800"
+                >
+                  Open rubric PDF ↗
+                </a>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {config.formType === ANTICIPATORY_GUIDANCE_FORM_TYPE ? (
+          <div className="mt-4 rounded-lg border border-teal-200 bg-teal-50/80 p-4 text-sm text-slate-800">
+            <p className="font-semibold text-slate-900">Anticipatory Guidance rubric</p>
+            {selectedFormRubric ? (
+              <div className="mt-2 flex flex-wrap gap-3 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setPreviewRubric(selectedFormRubric)}
+                  className="rounded border border-teal-300 bg-white px-2 py-1 font-medium text-teal-900 transition hover:bg-teal-100"
+                >
+                  Preview rubric
+                </button>
+                <a
+                  href={selectedFormRubric.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-teal-900 underline underline-offset-2 hover:text-teal-800"
+                >
+                  Open rubric PDF ↗
+                </a>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {config.formType === OR_ASSESSMENT_FORM_TYPE ? (
+          <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50/80 p-4 text-sm text-slate-800">
+            <p className="font-semibold text-slate-900">OR Assessment rubric</p>
+            {selectedFormRubric ? (
+              <div className="mt-2 flex flex-wrap gap-3 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setPreviewRubric(selectedFormRubric)}
+                  className="rounded border border-rose-300 bg-white px-2 py-1 font-medium text-rose-900 transition hover:bg-rose-100"
+                >
+                  Preview rubric
+                </button>
+                <a
+                  href={selectedFormRubric.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-rose-900 underline underline-offset-2 hover:text-rose-800"
+                >
+                  Open rubric PDF ↗
+                </a>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {config.formType === OBGYN_HEALTH_EDUCATION_FORM_TYPE ? (
+          <div className="mt-4 rounded-lg border border-teal-200 bg-teal-50/80 p-4 text-sm text-slate-800">
+            <p className="font-semibold text-slate-900">OB/GYNE Health Education template</p>
+            <p className="mt-1 text-xs text-slate-700">
+              Weighted scoring model (max {OBGYN_HEALTH_EDUCATION_MAX_SCORE}); pass threshold is{" "}
+              {OBGYN_HEALTH_EDUCATION_PASSING_SCORE} ({Math.round((OBGYN_HEALTH_EDUCATION_PASSING_SCORE / OBGYN_HEALTH_EDUCATION_MAX_SCORE) * 100)}%).
+            </p>
+            {selectedFormRubric ? (
+              <div className="mt-2 flex flex-wrap gap-3 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setPreviewRubric(selectedFormRubric)}
+                  className="rounded border border-teal-300 bg-white px-2 py-1 font-medium text-teal-900 transition hover:bg-teal-100"
+                >
+                  Preview template
+                </button>
+                <a
+                  href={selectedFormRubric.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-teal-900 underline underline-offset-2 hover:text-teal-800"
+                >
+                  Open template PDF ↗
+                </a>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {config.formType === OPD_CLINICAL_FORM_TYPE ? (
+          <div className="mt-4 rounded-lg border border-cyan-200 bg-cyan-50/80 p-4 text-sm text-slate-800">
+            <p className="font-semibold text-slate-900">OPD Clinical Assessment rubric</p>
+            {selectedFormRubric ? (
+              <div className="mt-2 flex flex-wrap gap-3 text-xs">
+                <button type="button" onClick={() => setPreviewRubric(selectedFormRubric)} className="rounded border border-cyan-300 bg-white px-2 py-1 font-medium text-cyan-900 transition hover:bg-cyan-100">Preview rubric</button>
+                <a href={selectedFormRubric.url} target="_blank" rel="noopener noreferrer" className="font-medium text-cyan-900 underline underline-offset-2 hover:text-cyan-800">Open rubric PDF ↗</a>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {config.formType === IPD_CLINICAL_FORM_TYPE ? (
+          <div className="mt-4 rounded-lg border border-sky-200 bg-sky-50/80 p-4 text-sm text-slate-800">
+            <p className="font-semibold text-slate-900">IPD Clinical Assessment rubric</p>
+            {selectedFormRubric ? (
+              <div className="mt-2 flex flex-wrap gap-3 text-xs">
+                <button type="button" onClick={() => setPreviewRubric(selectedFormRubric)} className="rounded border border-sky-300 bg-white px-2 py-1 font-medium text-sky-900 transition hover:bg-sky-100">Preview rubric</button>
+                <a href={selectedFormRubric.url} target="_blank" rel="noopener noreferrer" className="font-medium text-sky-900 underline underline-offset-2 hover:text-sky-800">Open rubric PDF ↗</a>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <div className="mt-4 grid grid-cols-1 gap-4">
           {config.criteriaKeys.map((criteriaKey) => (
-            <div key={criteriaKey} className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">{criteriaKey}</span>
+            <div
+              key={criteriaKey}
+              className={
+                config.formType === OBGYN_HEALTH_EDUCATION_FORM_TYPE &&
+                isObgynHealthEducationWarningSignsKey(criteriaKey)
+                  ? "block rounded-lg border-2 border-rose-300 bg-rose-50/70 p-3"
+                  : "block"
+              }
+            >
+              <span className="mb-2 block text-sm font-medium text-slate-700">
+                {maskFormUiLabel(language, criteriaKey)}
+              </span>
               {config.formType === "DOPS" ? (
                 <div className="flex flex-wrap gap-2">
                   {dopsCriteriaFeedbackOptions.map(({ value, label }) => {
@@ -1074,6 +1646,217 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
                         }`}
                       >
                         {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : config.formType === IM_HEALTH_ED_FORM_TYPE ? (
+                <>
+                  <div className="flex flex-wrap gap-2">
+                    {getImHealthEdScoreTiers().map((score, index) => {
+                      const value = String(score);
+                      const selected = formData[criteriaKey] === value;
+                      const tierLabels = getImHealthEdTierLabels(criteriaKey);
+                      const tierLabel = tierLabels[index] ?? "";
+                      return (
+                        <button
+                          key={`${criteriaKey}-${score}-${index}`}
+                          type="button"
+                          onClick={() => handleChange(criteriaKey, value)}
+                          className={`min-w-[9rem] flex-1 rounded-lg border px-3 py-2 text-left text-sm font-medium leading-snug transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 sm:min-w-0 sm:flex-initial ${
+                            selected
+                              ? "border-slate-900 bg-slate-900 text-white"
+                              : "border-slate-300 bg-white text-slate-800 hover:border-slate-400 hover:bg-slate-50"
+                          }`}
+                        >
+                          {tierLabel}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {IM_HEALTH_ED_CRITERION_RUBRIC_THAI[criteriaKey] ? (
+                    <div className="mt-3 rounded-md border border-slate-100 bg-slate-50/90 px-3 py-2.5 text-sm leading-relaxed text-slate-700">
+                      <span className="font-medium text-slate-800">เกณฑ์เนื้อหา: </span>
+                      {IM_HEALTH_ED_CRITERION_RUBRIC_THAI[criteriaKey]}
+                    </div>
+                  ) : null}
+                </>
+              ) : config.formType === CASE_PRESENTATION_FORM_TYPE ? (
+                <div className="flex flex-wrap gap-2">
+                  {getCasePresentationScoreTiers(criteriaKey).map((score, index) => {
+                    const value = String(score);
+                    const selected = formData[criteriaKey] === value;
+                    const tierLabel = CASE_PRESENTATION_TIER_LABELS[index];
+                    return (
+                      <button
+                        key={`${criteriaKey}-${score}-${index}`}
+                        type="button"
+                        onClick={() => handleChange(criteriaKey, value)}
+                        className={`min-w-[9rem] flex-1 rounded-lg border px-3 py-2 text-left text-sm font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 sm:min-w-0 sm:flex-initial ${
+                          selected
+                            ? "border-slate-900 bg-slate-900 text-white"
+                            : "border-slate-300 bg-white text-slate-800 hover:border-slate-400 hover:bg-slate-50"
+                        }`}
+                      >
+                        {tierLabel} ({score})
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : config.formType === INTERESTING_CASE_FORM_TYPE ? (
+                <div className="flex flex-wrap gap-2">
+                  {getInterestingCaseScoreTiers(criteriaKey).map((score, index) => {
+                    const value = String(score);
+                    const selected = formData[criteriaKey] === value;
+                    const tierLabel = INTERESTING_CASE_TIER_LABELS[index];
+                    return (
+                      <button
+                        key={`${criteriaKey}-${score}-${index}`}
+                        type="button"
+                        onClick={() => handleChange(criteriaKey, value)}
+                        className={`min-w-[9rem] flex-1 rounded-lg border px-3 py-2 text-left text-sm font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 sm:min-w-0 sm:flex-initial ${
+                          selected
+                            ? "border-slate-900 bg-slate-900 text-white"
+                            : "border-slate-300 bg-white text-slate-800 hover:border-slate-400 hover:bg-slate-50"
+                        }`}
+                      >
+                        {tierLabel} ({score})
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : config.formType === INTERESTING_CASE_GENERAL_FORM_TYPE ? (
+                <div className="flex flex-wrap gap-2">
+                  {getInterestingCaseGeneralScoreTiers(criteriaKey).map((score, index) => {
+                    const value = String(score);
+                    const selected = formData[criteriaKey] === value;
+                    const tierLabel = INTERESTING_CASE_GENERAL_TIER_LABELS[index];
+                    return (
+                      <button
+                        key={`${criteriaKey}-${score}-${index}`}
+                        type="button"
+                        onClick={() => handleChange(criteriaKey, value)}
+                        className={`min-w-[9rem] flex-1 rounded-lg border px-3 py-2 text-left text-sm font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 sm:min-w-0 sm:flex-initial ${
+                          selected
+                            ? "border-slate-900 bg-slate-900 text-white"
+                            : "border-slate-300 bg-white text-slate-800 hover:border-slate-400 hover:bg-slate-50"
+                        }`}
+                      >
+                        {tierLabel} ({score})
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : config.formType === OPD_ASSESSMENT_FORM_TYPE ? (
+                <div className="flex flex-wrap gap-2">
+                  {getOpdAssessmentScoreTiers(criteriaKey).map((score, index) => {
+                    const value = String(score);
+                    const selected = formData[criteriaKey] === value;
+                    const tierLabel = OPD_ASSESSMENT_TIER_LABELS[index];
+                    return (
+                      <button
+                        key={`${criteriaKey}-${score}-${index}`}
+                        type="button"
+                        onClick={() => handleChange(criteriaKey, value)}
+                        className={`min-w-[9rem] flex-1 rounded-lg border px-3 py-2 text-left text-sm font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 sm:min-w-0 sm:flex-initial ${
+                          selected
+                            ? "border-slate-900 bg-slate-900 text-white"
+                            : "border-slate-300 bg-white text-slate-800 hover:border-slate-400 hover:bg-slate-50"
+                        }`}
+                      >
+                        {tierLabel} ({score})
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : config.formType === ANTICIPATORY_GUIDANCE_FORM_TYPE ? (
+                <div className="flex flex-wrap gap-2">
+                  {getAnticipatoryGuidanceScoreTiers(criteriaKey).map((score, index) => {
+                    const value = String(score);
+                    const selected = formData[criteriaKey] === value;
+                    const tierLabel = ANTICIPATORY_GUIDANCE_TIER_LABELS[index];
+                    return (
+                      <button
+                        key={`${criteriaKey}-${score}-${index}`}
+                        type="button"
+                        onClick={() => handleChange(criteriaKey, value)}
+                        className={`min-w-[9rem] flex-1 rounded-lg border px-3 py-2 text-left text-sm font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 sm:min-w-0 sm:flex-initial ${
+                          selected
+                            ? "border-slate-900 bg-slate-900 text-white"
+                            : "border-slate-300 bg-white text-slate-800 hover:border-slate-400 hover:bg-slate-50"
+                        }`}
+                      >
+                        {tierLabel} ({score})
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : config.formType === OR_ASSESSMENT_FORM_TYPE ? (
+                <div className="flex flex-wrap gap-2">
+                  {getOrAssessmentScoreTiers(criteriaKey).map((score, index) => {
+                    const value = String(score);
+                    const selected = formData[criteriaKey] === value;
+                    const tierLabel = OR_ASSESSMENT_TIER_LABELS[index];
+                    return (
+                      <button
+                        key={`${criteriaKey}-${score}-${index}`}
+                        type="button"
+                        onClick={() => handleChange(criteriaKey, value)}
+                        className={`min-w-[9rem] flex-1 rounded-lg border px-3 py-2 text-left text-sm font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 sm:min-w-0 sm:flex-initial ${
+                          selected
+                            ? "border-slate-900 bg-slate-900 text-white"
+                            : "border-slate-300 bg-white text-slate-800 hover:border-slate-400 hover:bg-slate-50"
+                        }`}
+                      >
+                        {tierLabel} ({score})
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : config.formType === OBGYN_HEALTH_EDUCATION_FORM_TYPE ? (
+                <div className="flex flex-wrap gap-2">
+                  {getObgynHealthEducationScoreTiers(criteriaKey).map((score, index) => {
+                    const value = String(score);
+                    const selected = formData[criteriaKey] === value;
+                    const tierLabel = OBGYN_HEALTH_EDUCATION_SCORE_LABELS[index];
+                    return (
+                      <button
+                        key={`${criteriaKey}-${score}-${index}`}
+                        type="button"
+                        onClick={() => handleChange(criteriaKey, value)}
+                        className={`min-w-[11rem] flex-1 rounded-lg border px-3 py-2 text-left text-sm font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 sm:min-w-0 sm:flex-initial ${
+                          selected
+                            ? "border-slate-900 bg-slate-900 text-white"
+                            : "border-slate-300 bg-white text-slate-800 hover:border-slate-400 hover:bg-slate-50"
+                        }`}
+                      >
+                        {tierLabel} ({score})
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : config.formType === OPD_CLINICAL_FORM_TYPE ? (
+                <div className="flex flex-wrap gap-2">
+                  {getOpdClinicalScoreTiers(criteriaKey).map((score, index) => {
+                    const value = String(score);
+                    const selected = formData[criteriaKey] === value;
+                    const tierLabel = OPD_CLINICAL_TIER_LABELS[index];
+                    return (
+                      <button key={`${criteriaKey}-${score}-${index}`} type="button" onClick={() => handleChange(criteriaKey, value)} className={`min-w-[10rem] flex-1 rounded-lg border px-3 py-2 text-left text-sm font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 sm:min-w-0 sm:flex-initial ${selected ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-800 hover:border-slate-400 hover:bg-slate-50"}`}>
+                        {tierLabel} ({score})
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : config.formType === IPD_CLINICAL_FORM_TYPE ? (
+                <div className="flex flex-wrap gap-2">
+                  {getIpdClinicalScoreTiers(criteriaKey).map((score, index) => {
+                    const value = String(score);
+                    const selected = formData[criteriaKey] === value;
+                    const tierLabel = IPD_CLINICAL_TIER_LABELS[index];
+                    return (
+                      <button key={`${criteriaKey}-${score}-${index}`} type="button" onClick={() => handleChange(criteriaKey, value)} className={`min-w-[10rem] flex-1 rounded-lg border px-3 py-2 text-left text-sm font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 sm:min-w-0 sm:flex-initial ${selected ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-800 hover:border-slate-400 hover:bg-slate-50"}`}>
+                        {tierLabel} ({score})
                       </button>
                     );
                   })}
@@ -1240,12 +2023,30 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-slate-900">Final Evaluation</h2>
+        <h2 className="text-lg font-semibold text-slate-900">{t(language, "Final Evaluation", "สรุปการประเมิน")}</h2>
+        {criteriaScoreSumPreview != null ? (
+          <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800">
+            <p className="font-medium">
+              {t(language, "Total score", "คะแนนรวม")}: {criteriaScoreSumPreview}
+            </p>
+          </div>
+        ) : null}
+        {config.formType === OBGYN_HEALTH_EDUCATION_FORM_TYPE ? (
+          <div className="mt-3 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-900">
+            <p className="font-medium">
+              Total score: {obgynHealthEducationTotal ?? 0} / {OBGYN_HEALTH_EDUCATION_MAX_SCORE}
+            </p>
+            <p className="text-xs">
+              Auto result from score:{" "}
+              {obgynAutoPassFromScore == null ? "—" : obgynAutoPassFromScore ? "Pass" : "Fail"} (evaluator can override via Overall Performance below)
+            </p>
+          </div>
+        ) : null}
         <div className="mt-4 grid grid-cols-1 gap-4">
           {config.overallPerformanceKey ? (
             <label className="block">
               <span className="mb-1 block text-sm font-medium text-slate-700">
-                {config.overallPerformanceKey}
+                {maskFormUiLabel(language, config.overallPerformanceKey)}
               </span>
               <select
                 value={formData[config.overallPerformanceKey]}
@@ -1264,7 +2065,7 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
 
           <label className="block">
             <span className="mb-1 block text-sm font-medium text-slate-700">
-              Overall Performance Result
+              {t(language, "Overall Performance Result", "ผลการประเมินโดยรวม")}
             </span>
             <select
               value={formData["Overall Performance Result"]}
@@ -1376,7 +2177,7 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
             Saving...
           </>
         ) : (
-          `Review & submit ${config.title}`
+          `${t(language, "Review & submit", "ตรวจทานและส่ง")} ${config.title}`
         )}
       </button>
 
@@ -1398,7 +2199,7 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
             onClick={(e) => e.stopPropagation()}
           >
             <h3 id="pre-submit-review-title" className="text-lg font-semibold text-slate-900">
-              Review before you submit
+              {t(language, "Review before you submit", "ตรวจทานก่อนส่ง")}
             </h3>
             <p className="mt-2 text-sm text-slate-600">
               Please read through your answers again, including scores and feedback. If anything is wrong, go back
@@ -1460,7 +2261,7 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
                 className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-50"
                 onClick={() => setShowPreSubmitReview(false)}
               >
-                Back to edit
+                {t(language, "Back to edit", "กลับไปแก้ไข")}
               </button>
               <button
                 type="button"
@@ -1474,10 +2275,56 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
                     Submitting...
                   </>
                 ) : (
-                  "Confirm and submit"
+                  t(language, "Confirm and submit", "ยืนยันและส่ง")
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {previewRubric ? (
+        <div
+          className="fixed inset-0 z-[130] flex items-end justify-center bg-black/60 p-4 sm:items-center"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setPreviewRubric(null);
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Rubric preview"
+            className="flex h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+              <h3 className="text-sm font-semibold text-slate-900">{previewRubric.title}</h3>
+              <div className="flex items-center gap-3">
+                <a
+                  href={previewRubric.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-medium text-slate-700 underline underline-offset-2 hover:text-slate-900"
+                >
+                  Open in new tab ↗
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewRubric(null)}
+                  className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+            <iframe
+              src={previewRubric.url}
+              className="h-full w-full"
+              title={previewRubric.title}
+            />
           </div>
         </div>
       ) : null}

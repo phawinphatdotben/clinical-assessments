@@ -8,9 +8,11 @@ import { getWpbaFormConfigBySlug } from "../../../../components/forms/wpba-confi
 import { DashboardNav } from "../../../components/dashboard-nav";
 import { getDashboardPathForRole, getUserAccessLookupResultByEmail } from "../../../lib/auth";
 import { supabase } from "../../../lib/supabase";
+import { t, useUiLanguage } from "../../../lib/ui-language";
 
 export default function StudentWpbaFormPage() {
   const router = useRouter();
+  const { language } = useUiLanguage();
   const params = useParams<{ formType: string }>();
   const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -58,7 +60,7 @@ export default function StudentWpbaFormPage() {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-100">
-        <p className="text-sm text-slate-600">Loading form...</p>
+        <p className="text-sm text-slate-600">{t(language, "Loading form...", "กำลังโหลดแบบฟอร์ม...")}</p>
       </div>
     );
   }
@@ -72,16 +74,16 @@ export default function StudentWpbaFormPage() {
       <DashboardNav email={email} />
       <main className="mx-auto w-full max-w-6xl px-6 py-10">
         <section className="mb-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h1 className="text-2xl font-semibold text-slate-900">Create {formConfig.title}</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">{t(language, "Create", "สร้าง")} {formConfig.title}</h1>
           <p className="mt-2 text-sm text-slate-600">
-            Student-created submissions are marked as pending until staff approval is completed.
+            {t(language, "Student-created submissions are marked as pending until staff approval is completed.", "รายการที่นักศึกษาสร้างจะอยู่สถานะรอจนกว่าอาจารย์จะอนุมัติ")}
           </p>
           <div className="mt-4">
             <Link
               href="/student"
               className="inline-flex items-center rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
             >
-              Back to Student Dashboard
+              {t(language, "Back to Student Dashboard", "กลับไปหน้าแดชบอร์ดนักศึกษา")}
             </Link>
           </div>
         </section>

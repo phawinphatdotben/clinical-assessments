@@ -8,7 +8,8 @@ select
   s.skill,
   s."group",
   s.amount_required,
-  s.enlisted_in_manual_skill
+  s.enlisted_in_manual_skill,
+  s.department
 from public.skills s
 order by s.skill;
 
@@ -18,6 +19,8 @@ grant select on public.dops_skills_catalog to authenticated;
 --    completed count is computed from Assessment (DOPS only),
 --    amount_required comes from skills.
 --    Uses current JWT email to resolve current student's Student ID.
+--    Keep original column order before `completed`; append new columns only after it, or
+--    `create or replace view` fails (42P16: cannot change name of view column "completed" ...).
 create or replace view public.student_dops_logbook_progress as
 with student_profile as (
   select
@@ -42,7 +45,8 @@ select
   s."group",
   s.amount_required,
   s.enlisted_in_manual_skill,
-  coalesce(d.completed, 0)::int as completed
+  coalesce(d.completed, 0)::int as completed,
+  s.department
 from public.skills s
 cross join student_profile sp
 left join dops_done d

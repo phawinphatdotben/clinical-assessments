@@ -1,12 +1,16 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { CLINICAL_DEPARTMENT_ROTATIONS } from "../lib/department-rotations";
+import { useSessionDepartmentRotation } from "../lib/use-session-department-rotation";
 import { supabase } from "../lib/supabase";
+import { t, useUiLanguage } from "../lib/ui-language";
 
 type RoleMode = "Admin" | "Staff" | "Student";
 
 type SkillRow = {
   skill: string;
+  department: string | null;
   group: string | null;
   amount_required: number | null;
   enlisted_in_manual_skill: string | null;
@@ -28,21 +32,10 @@ const pickString = (value: unknown): string => {
   return "";
 };
 
-const isCompletedStatus = (rawStatus: string): boolean => {
-  const normalized = rawStatus.trim().toLowerCase();
-  if (!normalized) {
-    return false;
-  }
-  if (normalized.includes("pending")) {
-    return false;
-  }
-  if (normalized === "fail") {
-    return false;
-  }
-  return true;
-};
 
 export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps) {
+  const { language } = useUiLanguage();
+  const [sessionDepartmentRotation, setSessionDepartmentRotation] = useSessionDepartmentRotation();
   const [skills, setSkills] = useState<SkillRow[]>([]);
   const [skillsTableName, setSkillsTableName] = useState<"skills" | "Skills">("skills");
   const [loadingSkills, setLoadingSkills] = useState(true);
@@ -53,12 +46,14 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
   const [editingSkill, setEditingSkill] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<{
     skill: string;
+    department: string;
     group: string;
     amount_required: string;
     enlisted_in_manual_skill: string;
-  }>({ skill: "", group: "", amount_required: "", enlisted_in_manual_skill: "" });
+  }>({ skill: "", department: "", group: "", amount_required: "", enlisted_in_manual_skill: "" });
   const [newSkill, setNewSkill] = useState({
     skill: "",
+    department: "",
     group: "",
     amount_required: "",
     enlisted_in_manual_skill: "",
@@ -79,8 +74,12 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
         : typeof requiredRaw === "string" && requiredRaw.trim()
           ? Number(requiredRaw)
           : null;
+    const departmentRaw = raw.department ?? raw.Department ?? raw["Department/Rotation"];
+    const department = pickString(departmentRaw);
+
     return {
       skill,
+      department: department || null,
       group: group || null,
       amount_required: Number.isFinite(required as number) ? (required as number) : null,
       enlisted_in_manual_skill: manual || null,
@@ -93,13 +92,13 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
     };
   };
 
-  const loadSkills = async () => {
+  const loadSkills = useCallback(async () => {
     setLoadingSkills(true);
     setLoadError(null);
     if (isStudentView) {
       const { data, error } = await supabase
         .from("student_dops_logbook_progress")
-        .select("skill, group, amount_required, enlisted_in_manual_skill, completed")
+        .select("skill, department, group, amount_required, enlisted_in_manual_skill, completed")
         .order("skill", { ascending: true });
       if (error) {
         setLoadError(error.message);
@@ -114,9 +113,9 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
       setLoadingSkills(false);
       return;
     }
-    const { data: viewData, error: viewError } = await supabase
+      const { data: viewData, error: viewError } = await supabase
       .from("dops_skills_catalog")
-      .select("skill, group, amount_required, enlisted_in_manual_skill")
+      .select("skill, department, group, amount_required, enlisted_in_manual_skill")
       .order("skill", { ascending: true });
     if (!viewError) {
       const normalized = ((viewData as Record<string, unknown>[] | null) ?? [])
@@ -144,24 +143,29 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
     setLoadError("Could not read skills table. Check RLS and table/column names.");
     setSkills([]);
     setLoadingSkills(false);
-  };
+  }, [isStudentView]);
 
   useEffect(() => {
-    void loadSkills();
-  }, [isStudentView, studentId]);
+    queueMicrotask(() => void loadSkills());
+  }, [isStudentView, studentId, loadSkills]);
 
   const filteredSkills = useMemo(() => {
+    const dept = sessionDepartmentRotation.trim();
+    const rotationFiltered =
+      dept.length === 0
+        ? skills
+        : skills.filter((row) => !row.department || row.department === dept);
     const q = search.trim().toLowerCase();
     if (!q) {
-      return skills;
+      return rotationFiltered;
     }
-    return skills.filter((row) => {
+    return rotationFiltered.filter((row) => {
       const skill = pickString(row.skill).toLowerCase();
       const group = pickString(row.group).toLowerCase();
       const enlisted = pickString(row.enlisted_in_manual_skill).toLowerCase();
       return skill.includes(q) || group.includes(q) || enlisted.includes(q);
     });
-  }, [skills, search]);
+  }, [skills, search, sessionDepartmentRotation]);
 
   const startEdit = (row: SkillRow) => {
     setSavingError(null);
@@ -169,6 +173,7 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
     setEditingSkill(row.skill);
     setEditDraft({
       skill: row.skill,
+      department: row.department ?? "",
       group: row.group ?? "",
       amount_required:
         row.amount_required == null || Number.isNaN(row.amount_required)
@@ -201,6 +206,7 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
       .from(skillsTableName)
       .update({
         skill: trimmedSkill,
+        department: editDraft.department.trim() || null,
         group: editDraft.group.trim() || null,
         amount_required: requiredNumber,
         enlisted_in_manual_skill: editDraft.enlisted_in_manual_skill.trim() || null,
@@ -236,6 +242,7 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
     const { error } = await supabase.from(skillsTableName).insert([
       {
         skill: skillName,
+        department: newSkill.department.trim() || null,
         group: newSkill.group.trim() || null,
         amount_required: requiredNumber,
         enlisted_in_manual_skill: newSkill.enlisted_in_manual_skill.trim() || null,
@@ -250,6 +257,7 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
     setSavingMessage("New skill added.");
     setNewSkill({
       skill: "",
+      department: "",
       group: "",
       amount_required: "",
       enlisted_in_manual_skill: "",
@@ -264,8 +272,8 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
           <h2 className="text-lg font-semibold text-slate-900">DOPS Logbook</h2>
           <p className="mt-1 text-sm text-slate-600">
             {isStudentView
-              ? "Track your completed procedures against required counts."
-              : "Reference of DOPS skills from Supabase."}
+              ? t(language, "Track your completed procedures against required counts.", "ติดตามจำนวนหัตถการที่ทำเสร็จเทียบกับจำนวนที่กำหนด")
+              : t(language, "Reference of DOPS skills from Supabase.", "รายการทักษะ DOPS อ้างอิงจาก Supabase")}
           </p>
         </div>
         <button
@@ -273,18 +281,36 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
           onClick={() => void loadSkills()}
           className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 transition hover:bg-slate-100"
         >
-          Refresh
+          {t(language, "Refresh", "รีเฟรช")}
         </button>
       </div>
 
-      <div className="mt-4">
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
         <label className="block">
-          <span className="mb-1 block text-sm font-medium text-slate-700">Search skills</span>
+          <span className="mb-1 block text-sm font-medium text-slate-700">{t(language, "Rotation filter", "ตัวกรองโรเตชัน")}</span>
+          <select
+            value={sessionDepartmentRotation}
+            onChange={(event) => setSessionDepartmentRotation(event.target.value)}
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+          >
+            <option value="">{t(language, "All rotations", "ทุกโรเตชัน")}</option>
+            {CLINICAL_DEPARTMENT_ROTATIONS.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-slate-500">
+            Matches the dashboard / form session rotation. Rows with blank department apply to every rotation.
+          </p>
+        </label>
+        <label className="block md:col-span-1">
+          <span className="mb-1 block text-sm font-medium text-slate-700">{t(language, "Search skills", "ค้นหาทักษะ")}</span>
           <input
             type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search by skill, group, or manual tag..."
+            placeholder={t(language, "Search by skill, group, or manual tag...", "ค้นหาจากชื่อทักษะ กลุ่ม หรือแท็กคู่มือ...")}
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500"
           />
         </label>
@@ -308,20 +334,32 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
 
       {canEdit ? (
         <form onSubmit={handleAddSkill} className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
-          <p className="text-sm font-medium text-slate-900">Add new skill</p>
-          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
+          <p className="text-sm font-medium text-slate-900">{t(language, "Add new skill", "เพิ่มทักษะใหม่")}</p>
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-5">
             <input
               type="text"
               value={newSkill.skill}
               onChange={(event) => setNewSkill((prev) => ({ ...prev, skill: event.target.value }))}
-              placeholder="Skill name"
+              placeholder={t(language, "Skill name", "ชื่อทักษะ")}
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 md:col-span-2"
             />
+            <select
+              value={newSkill.department}
+              onChange={(event) => setNewSkill((prev) => ({ ...prev, department: event.target.value }))}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+            >
+              <option value="">{t(language, "All rotations", "ทุกโรเตชัน")}</option>
+              {CLINICAL_DEPARTMENT_ROTATIONS.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
             <input
               type="text"
               value={newSkill.group}
               onChange={(event) => setNewSkill((prev) => ({ ...prev, group: event.target.value }))}
-              placeholder="Group"
+              placeholder={t(language, "Group", "กลุ่ม")}
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500"
             />
             <input
@@ -329,7 +367,7 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
               inputMode="numeric"
               value={newSkill.amount_required}
               onChange={(event) => setNewSkill((prev) => ({ ...prev, amount_required: event.target.value }))}
-              placeholder="Amount required"
+              placeholder={t(language, "Amount required", "จำนวนที่ต้องทำ")}
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500"
             />
           </div>
@@ -340,14 +378,14 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
               onChange={(event) =>
                 setNewSkill((prev) => ({ ...prev, enlisted_in_manual_skill: event.target.value }))
               }
-              placeholder="Enlisted in manual skill (e.g. Yes)"
+              placeholder={t(language, "Enlisted in manual skill (e.g. Yes)", "ระบุในคู่มือทักษะ (เช่น Yes)")}
               className="min-w-[220px] flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500"
             />
             <button
               type="submit"
               className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
             >
-              Add skill
+              {t(language, "Add skill", "เพิ่มทักษะ")}
             </button>
           </div>
         </form>
@@ -358,6 +396,7 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
           <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-600">
             <tr>
               <th className="px-3 py-3">Skill</th>
+              <th className="px-3 py-3">Rotation</th>
               <th className="px-3 py-3">Group</th>
               <th className="px-3 py-3">Required</th>
               {isStudentView ? <th className="px-3 py-3">Completed</th> : null}
@@ -371,7 +410,7 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
               <tr>
                 <td
                   className="px-3 py-3 text-slate-500"
-                  colSpan={canEdit ? (isStudentView ? 7 : 5) : isStudentView ? 6 : 4}
+                  colSpan={canEdit ? (isStudentView ? 8 : 6) : isStudentView ? 7 : 5}
                 >
                   Loading skills...
                 </td>
@@ -380,7 +419,7 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
               <tr>
                 <td
                   className="px-3 py-3 text-slate-500"
-                  colSpan={canEdit ? (isStudentView ? 7 : 5) : isStudentView ? 6 : 4}
+                  colSpan={canEdit ? (isStudentView ? 8 : 6) : isStudentView ? 7 : 5}
                 >
                   No skills match your search.
                 </td>
@@ -393,7 +432,7 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
                 const isDone = required > 0 && completed >= required;
                 return (
                   <tr
-                    key={`${row.skill}-${row.group ?? ""}-${row.enlisted_in_manual_skill ?? ""}-${index}`}
+                    key={`${row.skill}-${row.department ?? ""}-${row.group ?? ""}-${row.enlisted_in_manual_skill ?? ""}-${index}`}
                     className="text-slate-800"
                   >
                     <td className="px-3 py-2">
@@ -406,6 +445,28 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
                         />
                       ) : (
                         <span className="font-medium">{row.skill}</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      {isEditing ? (
+                        <select
+                          value={editDraft.department}
+                          onChange={(event) =>
+                            setEditDraft((prev) => ({ ...prev, department: event.target.value }))
+                          }
+                          className="w-full min-w-[8rem] rounded border border-slate-300 px-2 py-1 text-sm"
+                        >
+                          <option value="">All rotations</option>
+                          {CLINICAL_DEPARTMENT_ROTATIONS.map((d) => (
+                            <option key={d} value={d}>
+                              {d}
+                            </option>
+                          ))}
+                        </select>
+                      ) : row.department ? (
+                        row.department
+                      ) : (
+                        <span className="text-slate-400">All</span>
                       )}
                     </td>
                     <td className="px-3 py-2">

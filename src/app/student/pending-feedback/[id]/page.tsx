@@ -14,6 +14,7 @@ import {
   isPendingSelfReflectionStatus,
 } from "../../../lib/student-feedback";
 import { supabase } from "../../../lib/supabase";
+import { t, useUiLanguage } from "../../../lib/ui-language";
 
 const pickString = (row: Record<string, unknown>, keys: string[]): string => {
   for (const key of keys) {
@@ -43,6 +44,7 @@ export default function PendingStudentFeedbackPage() {
   const [saving, setSaving] = useState(false);
   /** Which Assessment column matched the URL id (id, Assessment ID, …). */
   const [assessmentPkColumn, setAssessmentPkColumn] = useState<string | null>(null);
+  const { language } = useUiLanguage();
 
   useEffect(() => {
     const gate = async () => {
@@ -166,7 +168,7 @@ export default function PendingStudentFeedbackPage() {
       return;
     }
 
-    setSuccessMessage("Thank you. Your Student Self-Reflection has been saved.");
+      setSuccessMessage(t(language, "Thank you. Your Student Self-Reflection has been saved.", "บันทึกการสะท้อนตนเองเรียบร้อยแล้ว ขอบคุณครับ/ค่ะ"));
     setSaving(false);
     setTimeout(() => {
       router.push("/student");
@@ -176,7 +178,7 @@ export default function PendingStudentFeedbackPage() {
   if (gateLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-100">
-        <p className="text-sm text-slate-600">Loading...</p>
+        <p className="text-sm text-slate-600">{t(language, "Loading...", "กำลังโหลด...")}</p>
       </div>
     );
   }
@@ -186,7 +188,7 @@ export default function PendingStudentFeedbackPage() {
       <div className="min-h-screen bg-slate-100">
         <DashboardNav email={email} />
         <div className="mx-auto max-w-2xl px-6 py-10">
-          <p className="text-sm text-slate-600">Loading assessment...</p>
+          <p className="text-sm text-slate-600">{t(language, "Loading assessment...", "กำลังโหลดแบบประเมิน...")}</p>
         </div>
       </div>
     );
@@ -201,7 +203,7 @@ export default function PendingStudentFeedbackPage() {
             {errorMessage}
           </p>
           <Link href="/student" className="mt-4 inline-block text-sm font-medium text-slate-700 underline">
-            Back to dashboard
+            {t(language, "Back to dashboard", "กลับไปหน้าแดชบอร์ด")}
           </Link>
         </div>
       </div>
@@ -221,11 +223,11 @@ export default function PendingStudentFeedbackPage() {
       <DashboardNav email={email} />
       <main className="mx-auto w-full max-w-2xl px-6 py-10">
         <Link href="/student" className="text-sm font-medium text-slate-600 hover:text-slate-900">
-          ← Student dashboard
+          ← {t(language, "Student dashboard", "แดชบอร์ดนักศึกษา")}
         </Link>
 
         <section className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h1 className="text-xl font-semibold text-slate-900">Student Self-Reflection</h1>
+          <h1 className="text-xl font-semibold text-slate-900">{t(language, "Student Self-Reflection", "การสะท้อนตนเองของนักศึกษา")}</h1>
           <p className="mt-2 text-sm text-slate-600">
             Your evaluator submitted this {formType} assessment. Please add your Student Self-Reflection
             below.
@@ -286,7 +288,9 @@ export default function PendingStudentFeedbackPage() {
             disabled={saving}
             className="mt-5 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-70"
           >
-            {saving ? "Saving..." : "Submit Student Self-Reflection"}
+                {saving
+                  ? t(language, "Saving...", "กำลังบันทึก...")
+                  : t(language, "Submit Student Self-Reflection", "ส่งการสะท้อนตนเองของนักศึกษา")}
           </button>
         </form>
       </main>

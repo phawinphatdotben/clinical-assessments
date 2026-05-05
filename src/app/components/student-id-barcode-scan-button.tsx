@@ -2,6 +2,7 @@
 
 import type { Html5Qrcode } from "html5-qrcode";
 import { useEffect, useRef, useState } from "react";
+import { t, useUiLanguage } from "../lib/ui-language";
 
 const READER_ELEMENT_ID = "staff-student-id-barcode-reader";
 
@@ -15,6 +16,7 @@ type Props = {
 };
 
 export function StudentIdBarcodeScanButton({ onDecoded }: Props) {
+  const { language } = useUiLanguage();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const onDecodedRef = useRef(onDecoded);
@@ -123,7 +125,7 @@ export function StudentIdBarcodeScanButton({ onDecoded }: Props) {
           />
           <path d="M8 12h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
         </svg>
-        Scan code
+        {t(language, "Scan code", "สแกนโค้ด")}
       </button>
 
       {open ? (
@@ -137,10 +139,14 @@ export function StudentIdBarcodeScanButton({ onDecoded }: Props) {
             <div className="flex items-start justify-between gap-3 text-white">
               <div>
                 <p id="student-scan-title" className="text-base font-semibold">
-                  Scan student ID
+                  {t(language, "Scan student ID", "สแกนรหัสนักศึกษา")}
                 </p>
                 <p className="mt-1 text-sm text-white/80">
-                  QR codes and common barcodes (e.g. Code 128) are supported. Works best on HTTPS or localhost.
+                  {t(
+                    language,
+                    "QR codes and common barcodes (e.g. Code 128) are supported. Works best on HTTPS or localhost.",
+                    "รองรับ QR code และบาร์โค้ดทั่วไป (เช่น Code 128) ทำงานได้ดีที่สุดบน HTTPS หรือ localhost"
+                  )}
                 </p>
               </div>
               <button
@@ -148,7 +154,7 @@ export function StudentIdBarcodeScanButton({ onDecoded }: Props) {
                 onClick={() => setOpen(false)}
                 className="shrink-0 rounded-lg bg-white/10 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-white/20"
               >
-                Close
+                {t(language, "Close", "ปิด")}
               </button>
             </div>
 

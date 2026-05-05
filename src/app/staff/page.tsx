@@ -25,6 +25,7 @@ import {
 } from "../lib/staff-assessments";
 import { ASSESSMENT_STATUS_PENDING_STAFF_APPROVAL } from "../lib/student-feedback";
 import { supabase } from "../lib/supabase";
+import { t, useUiLanguage } from "../lib/ui-language";
 
 type AssessmentRow = Record<string, unknown> & { id?: string | number };
 
@@ -55,6 +56,7 @@ function formatRowDate(row: AssessmentRow): string {
 
 export default function StaffDashboardPage() {
   const router = useRouter();
+  const { language } = useUiLanguage();
   const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [listLoading, setListLoading] = useState(true);
@@ -188,7 +190,7 @@ export default function StaffDashboardPage() {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-100">
-        <p className="text-sm text-slate-600">Loading dashboard...</p>
+        <p className="text-sm text-slate-600">{t(language, "Loading dashboard...", "กำลังโหลดแดชบอร์ด...")}</p>
       </div>
     );
   }
@@ -198,10 +200,13 @@ export default function StaffDashboardPage() {
       <DashboardNav email={email} />
       <main className="mx-auto w-full max-w-6xl px-6 py-10">
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h1 className="text-2xl font-semibold text-slate-900">Staff Dashboard</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">{t(language, "Staff Dashboard", "แดชบอร์ดอาจารย์/เจ้าหน้าที่")}</h1>
           <p className="mt-2 text-sm text-slate-600">
-            Welcome. You are signed in as a Staff user. Assessments listed here are submissions you created (your
-            email as evaluator) or submissions where you are the selected <strong>Staff ID</strong> evaluator.
+            {t(
+              language,
+              "Welcome. You are signed in as a Staff user. Assessments listed here are submissions you created (your email as evaluator) or submissions where you are the selected Staff ID evaluator.",
+              "ยินดีต้อนรับ คุณเข้าสู่ระบบในบทบาทอาจารย์/เจ้าหน้าที่ รายการประเมินที่แสดงคือรายการที่คุณสร้าง หรือรายการที่ระบุ Staff ID ของคุณเป็นผู้ประเมิน"
+            )}
           </p>
 
           <div className="mt-6">
@@ -227,18 +232,20 @@ export default function StaffDashboardPage() {
 
           {profileError ? (
             <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
-              <p className="font-medium">Profile</p>
+              <p className="font-medium">{t(language, "Profile", "โปรไฟล์")}</p>
               <p className="mt-1">{profileError}</p>
             </div>
           ) : null}
 
           <div className="mt-8 border-t border-slate-200 pt-6">
-            <h2 className="text-lg font-semibold text-slate-900">Your assessments</h2>
+            <h2 className="text-lg font-semibold text-slate-900">{t(language, "Your assessments", "แบบประเมินของคุณ")}</h2>
             <p className="mt-1 text-sm text-slate-600">
               Open a row to review details. Student submissions that need you show status{" "}
               <strong>Awaiting your approval</strong> until you approve them.
               {pendingApprovalCount > 0 ? (
-                <span className="ml-1 font-medium text-amber-900">({pendingApprovalCount} awaiting approval)</span>
+                <span className="ml-1 font-medium text-amber-900">
+                  ({pendingApprovalCount} {t(language, "awaiting approval", "รออนุมัติ")})
+                </span>
               ) : null}
             </p>
 
@@ -249,21 +256,21 @@ export default function StaffDashboardPage() {
             ) : null}
 
             {listLoading ? (
-              <p className="mt-3 text-sm text-slate-500">Loading assessments...</p>
+              <p className="mt-3 text-sm text-slate-500">{t(language, "Loading assessments...", "กำลังโหลดแบบประเมิน...")}</p>
             ) : rows.length === 0 && !listError && !profileError ? (
-              <p className="mt-3 text-sm text-slate-500">No assessments yet.</p>
+              <p className="mt-3 text-sm text-slate-500">{t(language, "No assessments yet.", "ยังไม่มีแบบประเมิน")}</p>
             ) : !listLoading && rows.length > 0 && filteredRows.length === 0 ? (
-              <p className="mt-3 text-sm text-slate-500">No assessments match your search.</p>
+              <p className="mt-3 text-sm text-slate-500">{t(language, "No assessments match your search.", "ไม่พบแบบประเมินที่ตรงกับการค้นหา")}</p>
             ) : !listLoading && filteredRows.length > 0 ? (
               <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
                 <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
                   <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-600">
                     <tr>
-                      <th className="px-4 py-3">Form</th>
-                      <th className="px-4 py-3">Student ID</th>
-                      <th className="px-4 py-3">Date</th>
-                      <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3">Action</th>
+                      <th className="px-4 py-3">{t(language, "Form", "แบบฟอร์ม")}</th>
+                      <th className="px-4 py-3">{t(language, "Student ID", "รหัสนักศึกษา")}</th>
+                      <th className="px-4 py-3">{t(language, "Date", "วันที่")}</th>
+                      <th className="px-4 py-3">{t(language, "Status", "สถานะ")}</th>
+                      <th className="px-4 py-3">{t(language, "Action", "การดำเนินการ")}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
@@ -296,10 +303,10 @@ export default function StaffDashboardPage() {
                                 href={`/staff/assessments/${encodeURIComponent(rid)}`}
                                 className="font-medium text-sky-700 underline hover:text-sky-900"
                               >
-                                Open
+                                {t(language, "Open", "เปิด")}
                               </Link>
                             ) : (
-                              <span className="text-xs text-slate-400">No row id</span>
+                              <span className="text-xs text-slate-400">{t(language, "No row id", "ไม่มีรหัสรายการ")}</span>
                             )}
                           </td>
                         </tr>

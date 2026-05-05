@@ -22,7 +22,7 @@ function dopsValueToPoints(raw: string): number | null {
 
 function numericTierToPoints(raw: string): number | null {
   const n = Number(raw.trim());
-  if (!Number.isNaN(n) && n >= 1 && n <= 4) {
+  if (!Number.isNaN(n) && Number.isFinite(n) && n >= 0) {
     return n;
   }
   return null;
@@ -40,7 +40,7 @@ function pointsFromCriterionCell(formType: string, raw: string | undefined): num
 
 /**
  * Sum criterion scores at submit time from WpbaForm `formData` + config.
- * DOPS: maps labels to 1–3; other WPBA forms: expects 1–4 tier values as stored in the form.
+ * DOPS: maps labels to 1–3; other WPBA forms: accepts non-negative numeric weighted values.
  */
 export function computeCriteriaScoreSumFromFormData(
   formData: Record<string, string>,

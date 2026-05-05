@@ -33,6 +33,7 @@ import {
   type StudentDashboardSummaryStatus,
 } from "../lib/student-feedback";
 import { supabase } from "../lib/supabase";
+import { t, useUiLanguage } from "../lib/ui-language";
 
 type AssessmentRow = Record<string, unknown> & {
   id?: string | number;
@@ -53,6 +54,7 @@ const pickString = (row: Record<string, unknown>, keys: string[]): string => {
 
 export default function StudentDashboardPage() {
   const router = useRouter();
+  const { language } = useUiLanguage();
   const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [reflectionRows, setReflectionRows] = useState<AssessmentRow[]>([]);
@@ -292,7 +294,7 @@ export default function StudentDashboardPage() {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-100">
-        <p className="text-sm text-slate-600">Loading dashboard...</p>
+        <p className="text-sm text-slate-600">{t(language, "Loading dashboard...", "กำลังโหลดแดชบอร์ด...")}</p>
       </div>
     );
   }
@@ -302,9 +304,9 @@ export default function StudentDashboardPage() {
       <DashboardNav email={email} />
       <main className="mx-auto w-full max-w-6xl px-6 py-10">
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h1 className="text-2xl font-semibold text-slate-900">Student Dashboard</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">{t(language, "Student Dashboard", "แดชบอร์ดนักศึกษา")}</h1>
           <p className="mt-2 text-sm text-slate-600">
-            Welcome. You are signed in as a Student user.
+            {t(language, "Welcome. You are signed in as a Student user.", "ยินดีต้อนรับ คุณเข้าสู่ระบบในบทบาทนักศึกษา")}
           </p>
 
           <div className="mt-6">
@@ -332,15 +334,17 @@ export default function StudentDashboardPage() {
               className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900"
               role="alert"
             >
-              <p className="font-medium">Could not load your student profile</p>
+              <p className="font-medium">{t(language, "Could not load your student profile", "ไม่สามารถโหลดข้อมูลโปรไฟล์นักศึกษาได้")}</p>
               <p className="mt-1 text-rose-800">{profileLoadError}</p>
             </div>
           ) : null}
 
           <div className="mt-8 border-t border-slate-200 pt-6">
-            <h2 className="text-lg font-semibold text-slate-900">Student Self-Reflection</h2>
+            <h2 className="text-lg font-semibold text-slate-900">{t(language, "Student Self-Reflection", "การสะท้อนตนเองของนักศึกษา")}</h2>
             <p className="mt-1 text-sm text-slate-600">
-              For DOPS, Case-Based Discussion, and MiniCEX, complete your self-reflection within{" "}
+              For DOPS, Case-Based Discussion, MiniCEX, Internal Medicine Health Education, and OB/GYNE Health
+              Education, complete your
+              self-reflection within{" "}
               <strong>10 days</strong> of the assessment being created. Status and deadline come from your
               record in the system.
             </p>
@@ -355,34 +359,34 @@ export default function StudentDashboardPage() {
             ) : null}
 
             {reflectionLoading ? (
-              <p className="mt-3 text-sm text-slate-500">Loading assessments...</p>
+              <p className="mt-3 text-sm text-slate-500">{t(language, "Loading assessments...", "กำลังโหลดแบบประเมิน...")}</p>
             ) : reflectionRows.length === 0 ? (
               <p className="mt-3 text-sm text-slate-500">
-                No DOPS, CbD, or MiniCEX assessments in your self-reflection workflow yet.
+                {t(language, "No DOPS, CbD, or MiniCEX assessments in your self-reflection workflow yet.", "ยังไม่มีแบบประเมิน DOPS, CbD หรือ MiniCEX ในขั้นตอนการสะท้อนตนเอง")}
               </p>
             ) : filteredReflectionRows.length === 0 ? (
-              <p className="mt-3 text-sm text-slate-500">No assessments match your search.</p>
+              <p className="mt-3 text-sm text-slate-500">{t(language, "No assessments match your search.", "ไม่พบแบบประเมินที่ตรงกับการค้นหา")}</p>
             ) : (
               <div className="mt-6 space-y-8">
                 <ReflectionSection
-                  title="Pending — self-reflection required"
-                  description="Submit your Student Self-Reflection before the deadline."
+                  title={t(language, "Pending — self-reflection required", "รอดำเนินการ — ต้องกรอกการสะท้อนตนเอง")}
+                  description={t(language, "Submit your Student Self-Reflection before the deadline.", "กรุณาส่งการสะท้อนตนเองก่อนถึงกำหนด")}
                   rows={pendingList}
-                  emptyMessage="Nothing pending."
+                  emptyMessage={t(language, "Nothing pending.", "ไม่มีรายการค้างอยู่")}
                   variant="pending"
                 />
                 <ReflectionSection
-                  title="Complete"
-                  description="You have submitted your Student Self-Reflection."
+                  title={t(language, "Complete", "เสร็จสิ้น")}
+                  description={t(language, "You have submitted your Student Self-Reflection.", "คุณได้ส่งการสะท้อนตนเองแล้ว")}
                   rows={completeList}
-                  emptyMessage="No completed items yet."
+                  emptyMessage={t(language, "No completed items yet.", "ยังไม่มีรายการที่เสร็จสิ้น")}
                   variant="complete"
                 />
                 <ReflectionSection
-                  title="Fail — redo required"
-                  description="Create a new assessment submission for this type."
+                  title={t(language, "Fail — redo required", "ไม่ผ่าน — ต้องทำใหม่")}
+                  description={t(language, "Create a new assessment submission for this type.", "กรุณาสร้างการส่งแบบประเมินใหม่สำหรับแบบนี้")}
                   rows={failList}
-                  emptyMessage="No failed assessments."
+                  emptyMessage={t(language, "No failed assessments.", "ไม่มีรายการที่ไม่ผ่าน")}
                   variant="fail"
                 />
               </div>
@@ -390,7 +394,7 @@ export default function StudentDashboardPage() {
           </div>
 
           <div className="mt-8 border-t border-slate-200 pt-6">
-            <h2 className="text-lg font-semibold text-slate-900">Your assessments</h2>
+            <h2 className="text-lg font-semibold text-slate-900">{t(language, "Your assessments", "แบบประเมินของคุณ")}</h2>
             <p className="mt-1 text-sm text-slate-600">
               Summary of all forms linked to your Student ID. Scores are not shown—only form type, date, teacher,
               and status.
@@ -400,7 +404,7 @@ export default function StudentDashboardPage() {
                 className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900"
                 role="alert"
               >
-                <p className="font-medium">Could not load assessments</p>
+              <p className="font-medium">{t(language, "Could not load assessments", "ไม่สามารถโหลดแบบประเมินได้")}</p>
                 <p className="mt-1">{historyLoadError}</p>
                 <p className="mt-2 text-xs text-rose-800">
                   If this mentions policy or permission, re-run the latest{" "}
@@ -411,20 +415,20 @@ export default function StudentDashboardPage() {
             ) : null}
 
             {historyLoading ? (
-              <p className="mt-3 text-sm text-slate-500">Loading your assessments...</p>
+              <p className="mt-3 text-sm text-slate-500">{t(language, "Loading your assessments...", "กำลังโหลดแบบประเมินของคุณ...")}</p>
             ) : !historyLoadError && historyRows.length === 0 ? (
-              <p className="mt-3 text-sm text-slate-500">No assessments recorded yet.</p>
+              <p className="mt-3 text-sm text-slate-500">{t(language, "No assessments recorded yet.", "ยังไม่มีแบบประเมินที่บันทึกไว้")}</p>
             ) : !historyLoadError && filteredHistoryRows.length === 0 ? (
-              <p className="mt-3 text-sm text-slate-500">No assessments match your search.</p>
+              <p className="mt-3 text-sm text-slate-500">{t(language, "No assessments match your search.", "ไม่พบแบบประเมินที่ตรงกับการค้นหา")}</p>
             ) : !historyLoadError && filteredHistoryRows.length > 0 ? (
               <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
                 <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
                   <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-600">
                     <tr>
-                      <th className="px-4 py-3">Form</th>
-                      <th className="px-4 py-3">Date completed</th>
-                      <th className="px-4 py-3">Teacher</th>
-                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3">{t(language, "Form", "แบบฟอร์ม")}</th>
+                      <th className="px-4 py-3">{t(language, "Date completed", "วันที่เสร็จสิ้น")}</th>
+                      <th className="px-4 py-3">{t(language, "Teacher", "อาจารย์")}</th>
+                      <th className="px-4 py-3">{t(language, "Status", "สถานะ")}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
