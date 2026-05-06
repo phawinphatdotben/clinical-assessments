@@ -9,7 +9,8 @@ select
   s."group",
   s.amount_required,
   s.enlisted_in_manual_skill,
-  s.department
+  s.department,
+  s.rubric_pdf_url
 from public.skills s
 order by s.skill;
 
@@ -37,7 +38,8 @@ dops_done as (
   from public."Assessment" a
   where a."Form Type" = 'DOPS'
     and lower(coalesce(a."Status", '')) not like '%pending%'
-    and lower(coalesce(a."Status", '')) <> 'fail'
+    -- Legacy hard "Fail" status excludes from counts; "Complete (Fail)" counts as a completed attempt.
+    and lower(trim(coalesce(a."Status", ''))) <> 'fail'
   group by a."Student ID", a."Procedure Name"
 )
 select
@@ -46,7 +48,8 @@ select
   s.amount_required,
   s.enlisted_in_manual_skill,
   coalesce(d.completed, 0)::int as completed,
-  s.department
+  s.department,
+  s.rubric_pdf_url
 from public.skills s
 cross join student_profile sp
 left join dops_done d

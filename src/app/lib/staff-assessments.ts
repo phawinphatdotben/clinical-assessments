@@ -1,6 +1,7 @@
 import { supabase } from "./supabase";
+import { resolveCompleteStatusAfterStudentWorkflow } from "./assessment-outcome-status";
 import {
-  ASSESSMENT_STATUS_COMPLETE,
+  ASSESSMENT_STATUS_COMPLETE_FAIL,
   ASSESSMENT_STATUS_PENDING,
   ASSESSMENT_STATUS_PENDING_STAFF_APPROVAL,
   SELF_REFLECTION_DEADLINE_COLUMN,
@@ -138,14 +139,15 @@ export function staffCanAccessAssessmentRow(
  */
 export function buildStaffApprovalUpdatePayload(
   formType: string,
-  options?: { studentSelfReflection?: string }
+  options?: { studentSelfReflection?: string; mergedRowPreview?: Record<string, unknown> }
 ): Record<string, string> {
   if (!formTypeUsesStudentFeedback(formType)) {
     return { Status: "Submitted" };
   }
   const reflection = (options?.studentSelfReflection ?? "").trim();
+  const preview = options?.mergedRowPreview ?? {};
   if (reflection.length > 0) {
-    return { Status: ASSESSMENT_STATUS_COMPLETE };
+    return { Status: resolveCompleteStatusAfterStudentWorkflow(formType, preview) };
   }
   return {
     Status: ASSESSMENT_STATUS_PENDING,
@@ -161,6 +163,9 @@ export function formatStaffAssessmentStatusLabel(statusRaw: string): string {
   const s = statusRaw.trim();
   if (s === ASSESSMENT_STATUS_PENDING_STAFF_APPROVAL) {
     return "Awaiting your approval";
+  }
+  if (s === ASSESSMENT_STATUS_COMPLETE_FAIL) {
+    return "Complete (Fail)";
   }
   return s;
 }

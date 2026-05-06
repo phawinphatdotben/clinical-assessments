@@ -101,6 +101,7 @@ export const DEPARTMENT_FORM_OFFERS: Record<ClinicalDepartmentRotation, Departme
       detail:
         "Pediatric procedures — choose the procedure name on the form; skills catalog can be scoped by Pediatrics rotation when configured in Supabase.",
     }),
+    appOffer("ped-cbd", "Case-based Discussion (CbD)", "cbd"),
     appOffer("ped-minicex", "MINI-CEX", "minicex"),
     appOffer("ped-jc", "Journal Club", "jc"),
     appOffer("ped-case-presentation", "Case Presentation", "case-presentation", {
@@ -144,6 +145,10 @@ export const DEPARTMENT_FORM_OFFERS: Record<ClinicalDepartmentRotation, Departme
     appOffer("sx-or", "OR Assessment", "or-assessment", {
       detail: "Dedicated OR assessment form based on clinical OR rubric.",
       rubricDriveUrl: "/rubrics/or-assessment-081167.pdf",
+    }),
+    appOffer("sx-dops", "DOPS", "dops", {
+      detail:
+        "Sx/Ortho/ER procedures with department rubrics: FAST (trauma), excision (surgery), digital nerve block, short arm slab, skin traction — select procedure name on the form (rotation Sx/Ortho/ER).",
     }),
     appOffer("sx-topic", "Topic Presentation", "jc", {
       detail: "Topic presentations — Journal Conference form if that matches attachment policy.",

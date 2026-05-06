@@ -8,10 +8,10 @@ export const ANTICIPATORY_GUIDANCE_TIER_LABELS = [
 ] as const;
 
 const ANTICIPATORY_GUIDANCE_TIERS: Record<string, readonly [number, number, number, number]> = {
-  "Anticipatory Guidance - History": [5, 10, 15, 20],
+  "Anticipatory Guidance - History": [7.5, 15, 22.5, 30],
   "Anticipatory Guidance - Physical examination": [5, 10, 15, 20],
-  "Anticipatory Guidance - Problem list": [2.5, 5, 7.5, 10],
-  "Anticipatory Guidance - Management and anticipatory guidance": [12.5, 25, 37.5, 50],
+  "Anticipatory Guidance - Problem list": [5, 10, 15, 20],
+  "Anticipatory Guidance - Management and anticipatory guidance": [7.5, 15, 22.5, 30],
 };
 
 export function getAnticipatoryGuidanceScoreTiers(

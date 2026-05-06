@@ -58,6 +58,7 @@ const THAI_OFFER_LABEL_BY_ID: Record<string, string> = {
   "im-interesting-case-general": "การนำเสนอเคสที่น่าสนใจ",
   "im-opd-clinical": "แบบประเมิน OPD ทางคลินิก",
   "ped-dops": "DOPS",
+  "ped-cbd": "อภิปรายผู้ป่วยรายกรณี (CbD)",
   "ped-minicex": "MiniCEX",
   "ped-jc": "Journal Conference",
   "ped-case-presentation": "การนำเสนอเคส",
@@ -74,6 +75,7 @@ const THAI_OFFER_LABEL_BY_ID: Record<string, string> = {
   "ob-opd-clinical": "แบบประเมิน OPD ทางคลินิก",
   "ob-ipd-clinical": "แบบประเมิน IPD ทางคลินิก",
   "sx-or": "แบบประเมิน OR",
+  "sx-dops": "การประเมินหัตถการโดยตรง (DOPS)",
   "sx-topic": "การนำเสนอหัวข้อ",
   "sx-minicex": "MiniCEX",
   "sx-cbd": "CbD",
@@ -100,8 +102,11 @@ const THAI_OFFER_DETAIL_BY_ID: Record<string, string> = {
   "im-opd-clinical": "แบบประเมิน OPD ทางคลินิกในระบบ (ไม่ใช่กุมารเวช)",
   "ped-dops": "หัตถการกุมารเวช — เลือกชื่อหัตถการในแบบฟอร์ม",
   "ob-health-ed": "เทมเพลตทั่วไปพร้อม rubric ตามหัวข้อ (ให้นมบุตร, คุมกำเนิด, หลังคลอด, หลังผ่าตัด TAH c BSO)",
-  "ob-dops": "หัตถการสูติกรรม — เลือกชื่อหัตถการในแบบฟอร์ม",
+  "ob-dops":
+    "หัตถการสูติ-นรีเวช — PAP smear, vaginal packing, IUD insertion, contraceptive implant removal",
   "sx-or": "แบบประเมิน OR เฉพาะทางตาม rubric ห้องผ่าตัด",
+  "sx-dops":
+    "หัตถการศัลย/ออร์โธ/ฉุกเฉิน — FAST บาดเจ็บรุนแรง, excision, digital nerve block, short arm slab, skin traction",
   "sx-topic": "การนำเสนอหัวข้อ — ใช้ฟอร์ม Journal Conference ตามนโยบาย",
   "cm-opd": "แบบประเมินผู้ป่วยนอก — บันทึกในรูปแบบ MiniCEX",
 };

@@ -1,6 +1,7 @@
 import { supabase } from "./supabase";
 import {
   ASSESSMENT_STATUS_COMPLETE,
+  ASSESSMENT_STATUS_COMPLETE_FAIL,
   LEGACY_STATUS_COMPLETED,
   getStudentDashboardSummaryStatus,
 } from "./student-feedback";
@@ -167,14 +168,20 @@ export function filterAssessmentsByPersonSearch<T extends Record<string, unknown
 /** Completed / closed assessments suitable for portfolio counts. */
 export function isAssessmentCompleteForPortfolio(statusRaw: string): boolean {
   const s = statusRaw.trim().toLowerCase();
-  if (s === ASSESSMENT_STATUS_COMPLETE.toLowerCase() || s === LEGACY_STATUS_COMPLETED.toLowerCase()) {
+  if (
+    s === ASSESSMENT_STATUS_COMPLETE.toLowerCase() ||
+    s === LEGACY_STATUS_COMPLETED.toLowerCase() ||
+    s === ASSESSMENT_STATUS_COMPLETE_FAIL.toLowerCase() ||
+    s === "complete - fail" ||
+    s === "complete-fail"
+  ) {
     return true;
   }
   if (s === "submitted") {
     return true;
   }
   const summary = getStudentDashboardSummaryStatus(statusRaw);
-  return summary === "Complete";
+  return summary === "Complete" || summary === "CompleteFail";
 }
 
 const DEPT_KEYS = ["Department/Rotation", "Department", "department"];

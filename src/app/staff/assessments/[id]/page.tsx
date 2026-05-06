@@ -74,11 +74,15 @@ import {
   getIpdClinicalScoreColumnName,
   getIpdClinicalScoreTiers,
 } from "../../../../components/forms/ipd-clinical-criteria";
-import { findDopsProcedureRubric, getFormTypeRubric } from "../../../../components/forms/rubric-links";
+import { findStaticDopsProcedureRubric, getFormTypeRubric } from "../../../../components/forms/rubric-links";
 import { WPBA_FORM_CONFIGS } from "../../../../components/forms/wpba-config";
 import { DashboardNav } from "../../../components/dashboard-nav";
 import { getDashboardPathForRole, getUserAccessLookupResultByEmail } from "../../../lib/auth";
-import { ASSESSMENT_STATUS_COMPLETE, STUDENT_SELF_REFLECTION_COLUMN } from "../../../lib/student-feedback";
+import {
+  ASSESSMENT_STATUS_COMPLETE,
+  ASSESSMENT_STATUS_COMPLETE_FAIL,
+  STUDENT_SELF_REFLECTION_COLUMN,
+} from "../../../lib/student-feedback";
 import {
   buildStaffApprovalUpdatePayload,
   fetchAssessmentByRouteId,
@@ -398,9 +402,13 @@ export default function StaffAssessmentDetailPage() {
       gradePayload[def.column] = (gradeDraft[def.column] ?? "").trim();
     }
 
+    const mergedPreview = { ...row, ...gradePayload };
     const payload = {
       ...gradePayload,
-      ...buildStaffApprovalUpdatePayload(formType, { studentSelfReflection: reflection }),
+      ...buildStaffApprovalUpdatePayload(formType, {
+        studentSelfReflection: reflection,
+        mergedRowPreview: mergedPreview,
+      }),
     };
 
     setSaving(true);
@@ -415,10 +423,13 @@ export default function StaffAssessmentDetailPage() {
       return;
     }
 
-    const becameComplete = payload.Status === ASSESSMENT_STATUS_COMPLETE;
+    const becameComplete =
+      payload.Status === ASSESSMENT_STATUS_COMPLETE || payload.Status === ASSESSMENT_STATUS_COMPLETE_FAIL;
     setSuccessMessage(
       becameComplete
-        ? "Assessment graded, approved, and marked complete (student self-reflection was already provided)."
+        ? payload.Status === ASSESSMENT_STATUS_COMPLETE_FAIL
+          ? "Assessment graded, approved, and closed as Complete (Fail)."
+          : "Assessment graded, approved, and marked complete (student self-reflection was already provided)."
         : "Assessment graded and approved. The student can complete self-reflection from their dashboard by the deadline."
     );
     setSaving(false);
@@ -475,7 +486,7 @@ export default function StaffAssessmentDetailPage() {
   const obgynTopic = pickString(row, [OBGYN_HEALTH_EDUCATION_TOPIC_COLUMN]);
   const rubricLink =
     formType === "DOPS"
-      ? findDopsProcedureRubric(procedureName)
+      ? findStaticDopsProcedureRubric(procedureName, dept)
       : formType === OBGYN_HEALTH_EDUCATION_FORM_TYPE
         ? getObgynHealthEducationTopicRubric(obgynTopic) ?? getFormTypeRubric(formType)
         : getFormTypeRubric(formType);

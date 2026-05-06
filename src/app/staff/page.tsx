@@ -23,7 +23,10 @@ import {
   getStaffProfileForCurrentUserWithError,
   pickAssessmentRowId,
 } from "../lib/staff-assessments";
-import { ASSESSMENT_STATUS_PENDING_STAFF_APPROVAL } from "../lib/student-feedback";
+import {
+  ASSESSMENT_STATUS_COMPLETE_FAIL,
+  ASSESSMENT_STATUS_PENDING_STAFF_APPROVAL,
+} from "../lib/student-feedback";
 import { supabase } from "../lib/supabase";
 import { t, useUiLanguage } from "../lib/ui-language";
 
@@ -291,7 +294,9 @@ export default function StaffDashboardPage() {
                               className={
                                 statusRaw === ASSESSMENT_STATUS_PENDING_STAFF_APPROVAL
                                   ? "inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900 ring-1 ring-inset ring-amber-200"
-                                  : "text-slate-700"
+                                  : statusRaw === ASSESSMENT_STATUS_COMPLETE_FAIL
+                                    ? "inline-flex rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-900 ring-1 ring-inset ring-rose-200"
+                                    : "text-slate-700"
                               }
                             >
                               {statusLabel}

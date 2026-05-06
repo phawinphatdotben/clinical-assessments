@@ -5,8 +5,8 @@ import { FormEvent, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { DashboardNav } from "../../../components/dashboard-nav";
 import { getDashboardPathForRole, getUserAccessLookupResultByEmail } from "../../../lib/auth";
+import { resolveCompleteStatusAfterStudentWorkflow } from "../../../lib/assessment-outcome-status";
 import {
-  ASSESSMENT_STATUS_COMPLETE,
   STUDENT_SELF_REFLECTION_COLUMN,
   fetchAssessmentByRouteId,
   formTypeUsesStudentFeedback,
@@ -144,12 +144,24 @@ export default function PendingStudentFeedbackPage() {
       return;
     }
 
+    if (!row) {
+      setErrorMessage("Assessment data was not loaded.");
+      return;
+    }
+
+    const formType = pickString(row, ["Form Type", "form_type"]);
+    const mergedForOutcome = {
+      ...row,
+      [STUDENT_SELF_REFLECTION_COLUMN]: feedback.trim(),
+    };
+    const nextStatus = resolveCompleteStatusAfterStudentWorkflow(formType, mergedForOutcome);
+
     setSaving(true);
     const { data: updatedRows, error } = await supabase
       .from("Assessment")
       .update({
         [STUDENT_SELF_REFLECTION_COLUMN]: feedback.trim(),
-        Status: ASSESSMENT_STATUS_COMPLETE,
+        Status: nextStatus,
       })
       .eq(assessmentPkColumn, id)
       .select("Status");

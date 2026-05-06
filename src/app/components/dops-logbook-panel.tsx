@@ -14,6 +14,7 @@ type SkillRow = {
   group: string | null;
   amount_required: number | null;
   enlisted_in_manual_skill: string | null;
+  rubric_pdf_url: string | null;
   completed?: number | null;
 };
 
@@ -50,13 +51,22 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
     group: string;
     amount_required: string;
     enlisted_in_manual_skill: string;
-  }>({ skill: "", department: "", group: "", amount_required: "", enlisted_in_manual_skill: "" });
+    rubric_pdf_url: string;
+  }>({
+    skill: "",
+    department: "",
+    group: "",
+    amount_required: "",
+    enlisted_in_manual_skill: "",
+    rubric_pdf_url: "",
+  });
   const [newSkill, setNewSkill] = useState({
     skill: "",
     department: "",
     group: "",
     amount_required: "",
     enlisted_in_manual_skill: "",
+    rubric_pdf_url: "",
   });
   const canEdit = role === "Admin";
   const isStudentView = role === "Student";
@@ -76,6 +86,9 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
           : null;
     const departmentRaw = raw.department ?? raw.Department ?? raw["Department/Rotation"];
     const department = pickString(departmentRaw);
+    const rubricPdfRaw = raw.rubric_pdf_url ?? raw.rubric_pdf;
+    const rubric_pdf_url =
+      typeof rubricPdfRaw === "string" && rubricPdfRaw.trim() ? rubricPdfRaw.trim() : null;
 
     return {
       skill,
@@ -83,6 +96,7 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
       group: group || null,
       amount_required: Number.isFinite(required as number) ? (required as number) : null,
       enlisted_in_manual_skill: manual || null,
+      rubric_pdf_url,
       completed:
         typeof raw.completed === "number"
           ? raw.completed
@@ -98,7 +112,9 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
     if (isStudentView) {
       const { data, error } = await supabase
         .from("student_dops_logbook_progress")
-        .select("skill, department, group, amount_required, enlisted_in_manual_skill, completed")
+        .select(
+          "skill, department, group, amount_required, enlisted_in_manual_skill, completed, rubric_pdf_url",
+        )
         .order("skill", { ascending: true });
       if (error) {
         setLoadError(error.message);
@@ -115,7 +131,7 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
     }
       const { data: viewData, error: viewError } = await supabase
       .from("dops_skills_catalog")
-      .select("skill, department, group, amount_required, enlisted_in_manual_skill")
+      .select("skill, department, group, amount_required, enlisted_in_manual_skill, rubric_pdf_url")
       .order("skill", { ascending: true });
     if (!viewError) {
       const normalized = ((viewData as Record<string, unknown>[] | null) ?? [])
@@ -180,7 +196,52 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
           ? ""
           : String(row.amount_required),
       enlisted_in_manual_skill: row.enlisted_in_manual_skill ?? "",
+      rubric_pdf_url: row.rubric_pdf_url ?? "",
     });
+  };
+
+  const uploadRubricPdfForSkill = async (skillName: string, file: File | undefined) => {
+    if (!file) {
+      return;
+    }
+    if (file.type !== "application/pdf") {
+      setSavingError("Please choose a PDF file.");
+      return;
+    }
+    setSavingError(null);
+    setSavingMessage(null);
+    const safeBase = skillName.replace(/[^\w\d-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 72) || "rubric";
+    const objectPath = `${safeBase}_${Date.now()}.pdf`;
+
+    const { error: uploadError } = await supabase.storage.from("dops-rubric-pdfs").upload(objectPath, file, {
+      contentType: "application/pdf",
+      upsert: true,
+    });
+
+    if (uploadError) {
+      setSavingError(uploadError.message);
+      return;
+    }
+
+    const { data: pub } = supabase.storage.from("dops-rubric-pdfs").getPublicUrl(objectPath);
+    const publicUrl = pub?.publicUrl;
+    if (!publicUrl) {
+      setSavingError("Upload succeeded but public URL could not be resolved.");
+      return;
+    }
+
+    const { error: updError } = await supabase
+      .from(skillsTableName)
+      .update({ rubric_pdf_url: publicUrl })
+      .eq("skill", skillName);
+
+    if (updError) {
+      setSavingError(updError.message);
+      return;
+    }
+
+    setSavingMessage(t(language, "Rubric PDF uploaded and linked.", "อัปโหลด PDF เกณฑ์ประเมินและเชื่อมโยงแล้ว"));
+    await loadSkills();
   };
 
   const saveEdit = async () => {
@@ -210,6 +271,7 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
         group: editDraft.group.trim() || null,
         amount_required: requiredNumber,
         enlisted_in_manual_skill: editDraft.enlisted_in_manual_skill.trim() || null,
+        rubric_pdf_url: editDraft.rubric_pdf_url.trim() || null,
       })
       .eq("skill", editingSkill);
 
@@ -246,6 +308,7 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
         group: newSkill.group.trim() || null,
         amount_required: requiredNumber,
         enlisted_in_manual_skill: newSkill.enlisted_in_manual_skill.trim() || null,
+        rubric_pdf_url: newSkill.rubric_pdf_url.trim() || null,
       },
     ]);
 
@@ -261,6 +324,7 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
       group: "",
       amount_required: "",
       enlisted_in_manual_skill: "",
+      rubric_pdf_url: "",
     });
     await loadSkills();
   };
@@ -371,6 +435,19 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500"
             />
           </div>
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-1">
+            <input
+              type="url"
+              value={newSkill.rubric_pdf_url}
+              onChange={(event) => setNewSkill((prev) => ({ ...prev, rubric_pdf_url: event.target.value }))}
+              placeholder={t(
+                language,
+                "Optional rubric PDF URL",
+                "URL เกณฑ์ประเมิน PDF (ถ้ามี)",
+              )}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+            />
+          </div>
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <input
               type="text"
@@ -401,6 +478,9 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
               <th className="px-3 py-3">Required</th>
               {isStudentView ? <th className="px-3 py-3">Completed</th> : null}
               {isStudentView ? <th className="px-3 py-3">Progress</th> : null}
+              <th className="px-3 py-3 min-w-[11rem]">
+                {t(language, "Rubric PDF", "เกณฑ์ PDF")}
+              </th>
               <th className="px-3 py-3">Manual</th>
               {canEdit ? <th className="px-3 py-3">Action</th> : null}
             </tr>
@@ -410,7 +490,7 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
               <tr>
                 <td
                   className="px-3 py-3 text-slate-500"
-                  colSpan={canEdit ? (isStudentView ? 8 : 6) : isStudentView ? 7 : 5}
+                  colSpan={canEdit ? (isStudentView ? 9 : 7) : isStudentView ? 8 : 6}
                 >
                   Loading skills...
                 </td>
@@ -419,7 +499,7 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
               <tr>
                 <td
                   className="px-3 py-3 text-slate-500"
-                  colSpan={canEdit ? (isStudentView ? 8 : 6) : isStudentView ? 7 : 5}
+                  colSpan={canEdit ? (isStudentView ? 9 : 7) : isStudentView ? 8 : 6}
                 >
                   No skills match your search.
                 </td>
@@ -514,6 +594,58 @@ export function DopsLogbookPanel({ role, studentId = "" }: DopsLogbookPanelProps
                         </span>
                       </td>
                     ) : null}
+                    <td className="px-3 py-2 align-top">
+                      {isEditing ? (
+                        <div className="space-y-2">
+                          <input
+                            type="url"
+                            value={editDraft.rubric_pdf_url}
+                            onChange={(event) =>
+                              setEditDraft((prev) => ({ ...prev, rubric_pdf_url: event.target.value }))
+                            }
+                            placeholder="https://..."
+                            className="w-full min-w-[10rem] rounded border border-slate-300 px-2 py-1 text-xs"
+                          />
+                          <label className="block text-[11px] text-slate-600">
+                            {t(language, "Upload PDF", "อัปโหลด PDF")}
+                            <input
+                              type="file"
+                              accept="application/pdf"
+                              className="mt-1 block max-w-[14rem] text-xs text-slate-700"
+                              onChange={(event) =>
+                                void uploadRubricPdfForSkill(
+                                  (editingSkill ?? editDraft.skill).trim(),
+                                  event.target.files?.[0],
+                                )
+                              }
+                            />
+                          </label>
+                        </div>
+                      ) : row.rubric_pdf_url ? (
+                        <a
+                          href={row.rubric_pdf_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sky-700 underline underline-offset-2 hover:text-sky-900"
+                        >
+                          {t(language, "Open PDF", "เปิด PDF")}
+                        </a>
+                      ) : canEdit ? (
+                        <label className="flex cursor-pointer flex-col gap-1 text-[11px] text-slate-600">
+                          {t(language, "Upload PDF", "อัปโหลด PDF")}
+                          <input
+                            type="file"
+                            accept="application/pdf"
+                            className="max-w-[14rem] text-xs text-slate-700"
+                            onChange={(event) =>
+                              void uploadRubricPdfForSkill(row.skill, event.target.files?.[0])
+                            }
+                          />
+                        </label>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
+                    </td>
                     <td className="px-3 py-2">
                       {isEditing ? (
                         <input

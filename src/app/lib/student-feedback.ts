@@ -33,6 +33,12 @@ export const ASSESSMENT_STATUS_PENDING = "Pending";
 /** Stored in `Status` after the student submits self-reflection. */
 export const ASSESSMENT_STATUS_COMPLETE = "Complete";
 
+/**
+ * Stored in `Status` when the workflow is finished (reflection done / staff submitted closed form) but the
+ * overall outcome is Fail. Distinct from {@link ASSESSMENT_STATUS_FAIL} (legacy redo / hard fail bucket).
+ */
+export const ASSESSMENT_STATUS_COMPLETE_FAIL = "Complete (Fail)";
+
 /** Stored in `Status` when the attempt failed and the student must redo the form. */
 export const ASSESSMENT_STATUS_FAIL = "Fail";
 
@@ -51,11 +57,20 @@ export function isPendingSelfReflectionStatus(status: string): boolean {
   );
 }
 
-export function normalizeAssessmentStatusLabel(status: string): "Pending" | "Complete" | "Fail" | "Other" {
+export function normalizeAssessmentStatusLabel(
+  status: string
+): "Pending" | "Complete" | "CompleteFail" | "Fail" | "Other" {
   const s = status.trim();
   const lower = s.toLowerCase();
   if (lower === ASSESSMENT_STATUS_PENDING.toLowerCase() || lower === LEGACY_STATUS_PENDING_STUDENT_FEEDBACK.toLowerCase()) {
     return "Pending";
+  }
+  if (
+    lower === ASSESSMENT_STATUS_COMPLETE_FAIL.toLowerCase() ||
+    lower === "complete - fail" ||
+    lower === "complete-fail"
+  ) {
+    return "CompleteFail";
   }
   if (lower === ASSESSMENT_STATUS_COMPLETE.toLowerCase() || lower === LEGACY_STATUS_COMPLETED.toLowerCase()) {
     return "Complete";
@@ -67,7 +82,7 @@ export function normalizeAssessmentStatusLabel(status: string): "Pending" | "Com
 }
 
 /** How the student dashboard summarizes workflow (no scores): finished staff evaluations vs still waiting vs fail. */
-export type StudentDashboardSummaryStatus = "Complete" | "Pending" | "Fail" | "Other";
+export type StudentDashboardSummaryStatus = "Complete" | "CompleteFail" | "Pending" | "Fail" | "Other";
 
 const SUBMITTED_TO_STUDENT = "submitted";
 const PENDING_STAFF_APPROVAL = "pending staff approval";
@@ -79,6 +94,13 @@ const PENDING_STAFF_APPROVAL = "pending staff approval";
  */
 export function getStudentDashboardSummaryStatus(statusRaw: string): StudentDashboardSummaryStatus {
   const lower = statusRaw.trim().toLowerCase();
+  if (
+    lower === ASSESSMENT_STATUS_COMPLETE_FAIL.toLowerCase() ||
+    lower === "complete - fail" ||
+    lower === "complete-fail"
+  ) {
+    return "CompleteFail";
+  }
   if (lower === ASSESSMENT_STATUS_FAIL.toLowerCase()) {
     return "Fail";
   }

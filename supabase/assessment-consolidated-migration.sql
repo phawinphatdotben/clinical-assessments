@@ -1,5 +1,7 @@
   -- Consolidated Assessment schema migration (idempotent).
   -- Run this single file in Supabase SQL editor for all form fields currently used by the app.
+  -- Also applies DOPS logbook helpers (skills.rubric_pdf_url, storage bucket, catalog/progress views, optional UAC/UVC seed).
+  -- Requires public.skills when creating views; see supabase/rls-skills-logbook.sql first if that table is missing.
 
   alter table public."Assessment"
     add column if not exists "Student ID" text,
@@ -176,3 +178,213 @@ alter table public."Assessment"
     add column if not exists created_at timestamptz default now();
   alter table public."Assessment"
     add column if not exists updated_at timestamptz default now();
+
+  -- ---------------------------------------------------------------------------
+  -- DOPS logbook: optional per-skill rubric URL + Storage uploads + views
+  -- (Requires public.skills — see supabase/rls-skills-logbook.sql if needed.)
+  -- ---------------------------------------------------------------------------
+
+  alter table if exists public.skills
+    add column if not exists rubric_pdf_url text;
+
+  comment on column public.skills.rubric_pdf_url is
+    'Public URL to PDF rubric for this procedure; DOPS form resolves rubric from this when set.';
+
+  insert into storage.buckets (id, name, public)
+  values ('dops-rubric-pdfs', 'dops-rubric-pdfs', true)
+  on conflict (id) do nothing;
+
+  drop policy if exists "public read dops rubric pdfs" on storage.objects;
+  create policy "public read dops rubric pdfs"
+  on storage.objects
+  for select
+  to public
+  using (bucket_id = 'dops-rubric-pdfs');
+
+  drop policy if exists "admin upload dops rubric pdfs" on storage.objects;
+  create policy "admin upload dops rubric pdfs"
+  on storage.objects
+  for insert
+  to authenticated
+  with check (
+    bucket_id = 'dops-rubric-pdfs'
+    and exists (
+      select 1
+      from public."Users" as u
+      where lower(coalesce(u."Email", '')) = lower(coalesce(auth.jwt() ->> 'email', ''))
+        and lower(coalesce(u."Role", '')) = 'admin'
+        and (
+          coalesce(u."Is Approved", false) = true
+          or lower(coalesce(u."Status", '')) = 'approved'
+        )
+    )
+  );
+
+  drop policy if exists "admin update dops rubric pdfs" on storage.objects;
+  create policy "admin update dops rubric pdfs"
+  on storage.objects
+  for update
+  to authenticated
+  using (
+    bucket_id = 'dops-rubric-pdfs'
+    and exists (
+      select 1
+      from public."Users" as u
+      where lower(coalesce(u."Email", '')) = lower(coalesce(auth.jwt() ->> 'email', ''))
+        and lower(coalesce(u."Role", '')) = 'admin'
+        and (
+          coalesce(u."Is Approved", false) = true
+          or lower(coalesce(u."Status", '')) = 'approved'
+        )
+    )
+  );
+
+  create or replace view public.dops_skills_catalog as
+  select
+    s.skill,
+    s."group",
+    s.amount_required,
+    s.enlisted_in_manual_skill,
+    s.department,
+    s.rubric_pdf_url
+  from public.skills s
+  order by s.skill;
+
+  grant select on public.dops_skills_catalog to authenticated;
+
+  create or replace view public.student_dops_logbook_progress as
+  with student_profile as (
+    select
+      u."Student ID" as student_id
+    from public."Users" u
+    where lower(coalesce(u."Email", '')) = lower(coalesce(auth.jwt() ->> 'email', ''))
+    limit 1
+  ),
+  dops_done as (
+    select
+      a."Student ID" as student_id,
+      a."Procedure Name" as skill,
+      count(*)::int as completed
+    from public."Assessment" a
+    where a."Form Type" = 'DOPS'
+      and lower(coalesce(a."Status", '')) not like '%pending%'
+      and lower(trim(coalesce(a."Status", ''))) <> 'fail'
+    group by a."Student ID", a."Procedure Name"
+  )
+  select
+    s.skill,
+    s."group",
+    s.amount_required,
+    s.enlisted_in_manual_skill,
+    coalesce(d.completed, 0)::int as completed,
+    s.department,
+    s.rubric_pdf_url
+  from public.skills s
+  cross join student_profile sp
+  left join dops_done d
+    on d.student_id = sp.student_id
+   and d.skill = s.skill
+  order by s.skill;
+
+  grant select on public.student_dops_logbook_progress to authenticated;
+
+  -- Optional seed: Pediatric UAC/UVC (harmless upsert).
+  insert into public.skills (skill, "group", amount_required, enlisted_in_manual_skill, department, rubric_pdf_url)
+  values (
+    'UAC/UVC insertion',
+    null,
+    null,
+    null,
+    'Pediatrics',
+    null
+  )
+  on conflict (skill) do update
+  set department = excluded.department;
+
+  -- Optional seed: Sx/Ortho/ER DOPS procedures + rubric links.
+  insert into public.skills (skill, "group", amount_required, enlisted_in_manual_skill, department, rubric_pdf_url)
+  values
+    (
+      'FAST in trauma patients',
+      null,
+      null,
+      null,
+      'Sx/Ortho/ER',
+      '/rubrics/dops-sx-ortho-er/dops-fast-in-trauma-patients.pdf'
+    ),
+    (
+      'Excision (surgery)',
+      null,
+      null,
+      null,
+      'Sx/Ortho/ER',
+      '/rubrics/dops-sx-ortho-er/dops-excision-surgery.docx'
+    ),
+    (
+      'Digital nerve block',
+      null,
+      null,
+      null,
+      'Sx/Ortho/ER',
+      '/rubrics/dops-sx-ortho-er/dops-digital-nerve-block.pdf'
+    ),
+    (
+      'Short arm slab',
+      null,
+      null,
+      null,
+      'Sx/Ortho/ER',
+      '/rubrics/dops-sx-ortho-er/dops-short-arm-slab.pdf'
+    ),
+    (
+      'Skin traction',
+      null,
+      null,
+      null,
+      'Sx/Ortho/ER',
+      '/rubrics/dops-sx-ortho-er/dops-skin-traction.pdf'
+    )
+  on conflict (skill) do update
+  set
+    department = excluded.department,
+    rubric_pdf_url = excluded.rubric_pdf_url;
+
+  -- Optional seed: OB/GYN DOPS procedures + rubric links.
+  insert into public.skills (skill, "group", amount_required, enlisted_in_manual_skill, department, rubric_pdf_url)
+  values
+    (
+      'PAP smear',
+      null,
+      null,
+      null,
+      'OB/GYN',
+      '/rubrics/dops-obgyn/dops-pap-smear.docx'
+    ),
+    (
+      'Vaginal packing',
+      null,
+      null,
+      null,
+      'OB/GYN',
+      '/rubrics/dops-obgyn/dops-vaginal-packing.docx'
+    ),
+    (
+      'IUD insertion',
+      null,
+      null,
+      null,
+      'OB/GYN',
+      '/rubrics/dops-obgyn/dops-iud-insertion.pdf'
+    ),
+    (
+      'Contraceptive implant removal',
+      null,
+      null,
+      null,
+      'OB/GYN',
+      '/rubrics/dops-obgyn/dops-contraceptive-implant-removal.pdf'
+    )
+  on conflict (skill) do update
+  set
+    department = excluded.department,
+    rubric_pdf_url = excluded.rubric_pdf_url;

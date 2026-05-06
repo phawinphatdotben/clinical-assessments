@@ -6,6 +6,7 @@ import { StudentIdBarcodeScanButton } from "../../app/components/student-id-barc
 import { CLINICAL_DEPARTMENT_ROTATIONS, escapePostgrestFilterValue } from "../../app/lib/department-rotations";
 import { SESSION_DEPARTMENT_ROTATION_STORAGE_KEY } from "../../app/lib/use-session-department-rotation";
 import { supabase } from "../../app/lib/supabase";
+import { resolveStaffSubmitStatusWithoutStudentWorkflow } from "../../app/lib/assessment-outcome-status";
 import {
   CRITERIA_SCORE_SUM_COLUMN,
   computeCriteriaScoreSumFromFormData,
@@ -92,7 +93,7 @@ import {
   getOpdClinicalScoreTiers,
 } from "./opd-clinical-criteria";
 import {
-  findDopsProcedureRubric,
+  findStaticDopsProcedureRubric,
   getDopsProcedureAliasSuggestions,
   getFormTypeRubric,
   type RubricLink,
@@ -289,6 +290,7 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
   const [procedureSearchQuery, setProcedureSearchQuery] = useState("");
   const [procedureSearchResults, setProcedureSearchResults] = useState<SkillDirectoryRow[]>([]);
   const [procedureSearchLoading, setProcedureSearchLoading] = useState(false);
+  const [dopsCatalogRubricPdfUrl, setDopsCatalogRubricPdfUrl] = useState<string | null>(null);
   const [showPreSubmitReview, setShowPreSubmitReview] = useState(false);
   const [previewRubric, setPreviewRubric] = useState<RubricLink | null>(null);
   const router = useRouter();
@@ -320,12 +322,58 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
     return fields;
   }, [config.formType]);
 
+  const departmentRotationTrimmed = formData["Department/Rotation"]?.trim() ?? "";
+
+  useEffect(() => {
+    if (config.formType !== "DOPS") {
+      setDopsCatalogRubricPdfUrl(null);
+      return;
+    }
+    const proc = (formData["Procedure Name"] ?? "").trim();
+    if (!proc) {
+      setDopsCatalogRubricPdfUrl(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase
+        .from("dops_skills_catalog")
+        .select("rubric_pdf_url")
+        .eq("skill", proc)
+        .maybeSingle();
+      if (cancelled) {
+        return;
+      }
+      const raw = data && typeof data === "object" ? (data as { rubric_pdf_url?: unknown }).rubric_pdf_url : null;
+      const url = typeof raw === "string" && raw.trim() ? raw.trim() : "";
+      setDopsCatalogRubricPdfUrl(url || null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [config.formType, formData["Procedure Name"]]);
+
   const selectedDopsRubric = useMemo(() => {
     if (config.formType !== "DOPS") {
       return null;
     }
-    return findDopsProcedureRubric(formData["Procedure Name"] ?? "");
-  }, [config.formType, formData]);
+    const proc = (formData["Procedure Name"] ?? "").trim();
+    if (!proc) {
+      return null;
+    }
+    if (dopsCatalogRubricPdfUrl) {
+      return {
+        title: `DOPS rubric — ${proc}`,
+        url: dopsCatalogRubricPdfUrl,
+      } satisfies RubricLink;
+    }
+    return findStaticDopsProcedureRubric(proc, departmentRotationTrimmed);
+  }, [
+    config.formType,
+    formData["Procedure Name"],
+    departmentRotationTrimmed,
+    dopsCatalogRubricPdfUrl,
+  ]);
   const selectedFormRubric = useMemo(() => getFormTypeRubric(config.formType), [config.formType]);
   const selectedObgynTopicRubric = useMemo(() => {
     if (config.formType !== OBGYN_HEALTH_EDUCATION_FORM_TYPE) {
@@ -333,7 +381,34 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
     }
     return getObgynHealthEducationTopicRubric(formData[OBGYN_HEALTH_EDUCATION_TOPIC_COLUMN] ?? "");
   }, [config.formType, formData]);
-  const dopsAliasSuggestions = useMemo(() => getDopsProcedureAliasSuggestions(), []);
+  const dopsAliasSuggestions = useMemo(
+    () => getDopsProcedureAliasSuggestions(departmentRotationTrimmed),
+    [departmentRotationTrimmed],
+  );
+
+  const assertDopsProcedureHasRubric = useCallback(async (): Promise<string | null> => {
+    const proc = (formData["Procedure Name"] ?? "").trim();
+    if (!proc) {
+      return "Procedure Name is required for DOPS.";
+    }
+    const dept = departmentRotationTrimmed;
+    if (findStaticDopsProcedureRubric(proc, dept)) {
+      return null;
+    }
+    const { data } = await supabase
+      .from("dops_skills_catalog")
+      .select("rubric_pdf_url")
+      .eq("skill", proc)
+      .maybeSingle();
+    const raw = data && typeof data === "object" ? (data as { rubric_pdf_url?: unknown }).rubric_pdf_url : null;
+    if (typeof raw === "string" && raw.trim()) {
+      return null;
+    }
+    return (
+      "No rubric found for this procedure — pick a rotation-specific PDF from the suggestion list or ask an admin " +
+      "to attach one in Admin → DOPS logbook."
+    );
+  }, [formData, departmentRotationTrimmed]);
   const criteriaScoreSumPreview = useMemo(
     () => computeCriteriaScoreSumFromFormData(formData, config),
     [formData, config]
@@ -640,7 +715,7 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
       const dept = selectedDepartmentRotation;
       let catalogQuery = supabase
         .from("dops_skills_catalog")
-        .select("skill, group, amount_required")
+        .select("skill, group, amount_required, rubric_pdf_url")
         .ilike("skill", `%${q}%`);
       if (dept) {
         const escaped = escapePostgrestFilterValue(dept);
@@ -732,9 +807,6 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
       const procedure = (formData["Procedure Name"] ?? "").trim();
       if (!procedure) {
         return "Procedure Name is required for DOPS.";
-      }
-      if (!findDopsProcedureRubric(procedure)) {
-        return "Please use an exact DOPS procedure name that has a rubric (see suggestions under Procedure Name).";
       }
     }
     return null;
@@ -875,7 +947,7 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
           createdBy === "Staff"
             ? formTypeUsesStudentFeedback(config.formType)
               ? ASSESSMENT_STATUS_PENDING
-              : "Submitted"
+              : resolveStaffSubmitStatusWithoutStudentWorkflow(config.formType, formData)
             : ASSESSMENT_STATUS_PENDING_STAFF_APPROVAL,
       };
 
@@ -931,6 +1003,14 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
       setErrorMessage(validationError);
       setShowPreSubmitReview(false);
       return;
+    }
+    if (config.formType === "DOPS") {
+      const rubricGate = await assertDopsProcedureHasRubric();
+      if (rubricGate) {
+        setErrorMessage(rubricGate);
+        setShowPreSubmitReview(false);
+        return;
+      }
     }
     setIsSubmitting(true);
     const {
@@ -2320,11 +2400,24 @@ export default function WpbaForm({ createdBy, config }: WpbaFormProps) {
                 </button>
               </div>
             </div>
-            <iframe
-              src={previewRubric.url}
-              className="h-full w-full"
-              title={previewRubric.title}
-            />
+            {previewRubric.url.split("?")[0]?.toLowerCase().endsWith(".pdf") ? (
+              <iframe src={previewRubric.url} className="h-full w-full" title={previewRubric.title} />
+            ) : (
+              <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-10 text-center text-sm text-slate-600">
+                <p>
+                  This rubric is not a PDF in the browser preview (e.g. Word). Use{" "}
+                  <span className="font-medium text-slate-900">Open in new tab</span> to download or open it.
+                </p>
+                <a
+                  href={previewRubric.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+                >
+                  Download / open rubric ↗
+                </a>
+              </div>
+            )}
           </div>
         </div>
       ) : null}

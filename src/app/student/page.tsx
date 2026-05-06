@@ -191,6 +191,7 @@ export default function StudentDashboardPage() {
           return (
             label === "Pending" ||
             label === "Complete" ||
+            label === "CompleteFail" ||
             label === "Fail" ||
             lower === "submitted"
           );
@@ -258,9 +259,10 @@ export default function StudentDashboardPage() {
     [historyRows]
   );
 
-  const { pendingList, completeList, failList } = useMemo(() => {
+  const { pendingList, completeList, completeFailList, failList } = useMemo(() => {
     const pending: AssessmentRow[] = [];
     const complete: AssessmentRow[] = [];
+    const completeFail: AssessmentRow[] = [];
     const fail: AssessmentRow[] = [];
 
     for (const row of filteredReflectionRows) {
@@ -268,6 +270,8 @@ export default function StudentDashboardPage() {
       const label = normalizeAssessmentStatusLabel(st);
       if (label === "Pending") {
         pending.push(row);
+      } else if (label === "CompleteFail") {
+        completeFail.push(row);
       } else if (label === "Complete") {
         complete.push(row);
       } else if (label === "Fail") {
@@ -287,8 +291,18 @@ export default function StudentDashboardPage() {
       const cb = pickString(b, ["created_at"]);
       return cb.localeCompare(ca);
     });
+    completeFail.sort((a, b) => {
+      const ca = pickString(a, ["created_at"]);
+      const cb = pickString(b, ["created_at"]);
+      return cb.localeCompare(ca);
+    });
 
-    return { pendingList: pending, completeList: complete, failList: fail };
+    return {
+      pendingList: pending,
+      completeList: complete,
+      completeFailList: completeFail,
+      failList: fail,
+    };
   }, [filteredReflectionRows]);
 
   if (isLoading) {
@@ -383,6 +397,17 @@ export default function StudentDashboardPage() {
                   variant="complete"
                 />
                 <ReflectionSection
+                  title={t(language, "Complete — did not pass", "เสร็จสิ้น — ไม่ผ่านเกณฑ์")}
+                  description={t(
+                    language,
+                    "Workflow is closed, but overall outcome was Fail (see evaluator record).",
+                    "ขั้นตอนครบแล้ว แต่ผลประเมินรวมอยู่ในสถานะไม่ผ่าน",
+                  )}
+                  rows={completeFailList}
+                  emptyMessage={t(language, "No completed failed outcomes.", "ไม่มีรายการเสร็จแต่ไม่ผ่าน")}
+                  variant="completeFail"
+                />
+                <ReflectionSection
                   title={t(language, "Fail — redo required", "ไม่ผ่าน — ต้องทำใหม่")}
                   description={t(language, "Create a new assessment submission for this type.", "กรุณาสร้างการส่งแบบประเมินใหม่สำหรับแบบนี้")}
                   rows={failList}
@@ -467,7 +492,7 @@ function ReflectionSection({
   description: string;
   rows: AssessmentRow[];
   emptyMessage: string;
-  variant: "pending" | "complete" | "fail";
+  variant: "pending" | "complete" | "completeFail" | "fail";
 }) {
   return (
     <div>
@@ -490,7 +515,7 @@ function ReflectionSection({
   );
 }
 
-function ReflectionRow({ row, variant }: { row: AssessmentRow; variant: "pending" | "complete" | "fail" }) {
+function ReflectionRow({ row, variant }: { row: AssessmentRow; variant: "pending" | "complete" | "completeFail" | "fail" }) {
   const formType = pickString(row, ["Form Type", "form_type"]);
   const staffId = pickString(row, ["Staff ID", "StaffID", "staff_id"]);
   const hospital = pickString(row, ["Hospital", "hospital"]);
@@ -504,7 +529,7 @@ function ReflectionRow({ row, variant }: { row: AssessmentRow; variant: "pending
   return (
     <li
       className={`flex flex-wrap items-start justify-between gap-3 rounded-lg border px-4 py-3 ${
-        variant === "fail"
+        variant === "fail" || variant === "completeFail"
           ? "border-rose-200 bg-rose-50"
           : variant === "complete"
             ? "border-emerald-200 bg-emerald-50/60"
@@ -598,6 +623,8 @@ function SummaryStatusBadge({ label }: { label: StudentDashboardSummaryStatus })
       ? "bg-amber-100 text-amber-900 ring-amber-200"
       : label === "Complete"
         ? "bg-emerald-100 text-emerald-900 ring-emerald-200"
+        : label === "CompleteFail"
+          ? "bg-rose-100 text-rose-900 ring-rose-200"
         : label === "Fail"
           ? "bg-rose-100 text-rose-900 ring-rose-200"
           : "bg-slate-100 text-slate-800 ring-slate-200";
@@ -607,6 +634,8 @@ function SummaryStatusBadge({ label }: { label: StudentDashboardSummaryStatus })
       ? "Pending"
       : label === "Complete"
         ? "Complete"
+        : label === "CompleteFail"
+          ? "Complete (Fail)"
         : label === "Fail"
           ? "Fail"
           : "Other";
@@ -626,12 +655,22 @@ function StatusBadge({ label }: { label: ReturnType<typeof normalizeAssessmentSt
       ? "bg-amber-100 text-amber-900 ring-amber-200"
       : label === "Complete"
         ? "bg-emerald-100 text-emerald-900 ring-emerald-200"
+        : label === "CompleteFail"
+          ? "bg-rose-100 text-rose-900 ring-rose-200"
         : label === "Fail"
           ? "bg-rose-100 text-rose-900 ring-rose-200"
           : "bg-slate-100 text-slate-800 ring-slate-200";
 
   const text =
-    label === "Pending" ? "Pending" : label === "Complete" ? "Complete" : label === "Fail" ? "Fail" : label;
+    label === "Pending"
+      ? "Pending"
+      : label === "Complete"
+        ? "Complete"
+        : label === "CompleteFail"
+          ? "Complete (Fail)"
+          : label === "Fail"
+            ? "Fail"
+            : label;
 
   return (
     <span
