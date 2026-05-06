@@ -5,6 +5,25 @@ import {
   STUDENT_SELF_REFLECTION_COLUMN,
 } from "./student-feedback";
 
+const FULL_SCORE_BY_FORM_TYPE: Record<string, number> = {
+  DOPS: 33,
+  "Extern Clinical Assessment": 100,
+  "Journal Conference": 100,
+  "Multisource Feedback": 32,
+  "Case-Based Discussion": 20,
+  MiniCEX: 32,
+  "Internal Medicine Health Education": 24,
+  "Case Presentation": 100,
+  "Interesting Case Presentation": 100,
+  "Interesting Case Presentation (General)": 100,
+  "OPD Assessment": 100,
+  "OPD Clinical Assessment": 100,
+  "IPD Clinical Assessment": 100,
+  "Anticipatory Guidance Assessment": 100,
+  "OR Assessment": 100,
+  "OB/GYNE Health Education": 30,
+};
+
 /** Columns shown first in wide exports (readable order); remaining keys follow alphabetically. */
 export const ADMIN_EXPORT_COLUMN_PRIORITY: string[] = [
   "Student ID",
@@ -204,16 +223,11 @@ export function buildSummarySheetRows(rows: Record<string, unknown>[]): Record<s
     "Form Type": formatExportCell(row["Form Type"] ?? row["form_type"]),
     "Status": formatExportCell(row["Status"] ?? row["status"]),
     "Recorded date": formatExportCell(row.updated_at ?? row.created_at ?? ""),
-    "Staff ID": formatExportCell(row["Staff ID"] ?? row["StaffID"]),
-    "Hospital": formatExportCell(row["Hospital"]),
-    "Department/Rotation": formatExportCell(row["Department/Rotation"] ?? row["Department"]),
-    "Evaluator Role": formatExportCell(row["Evaluator Role"]),
-    "Overall Performance Result": formatExportCell(row["Overall Performance Result"]),
+    "Total score": formatAssessmentScoreWithFull(row),
+    Department: formatExportCell(row["Department/Rotation"] ?? row["Department"]),
+    "Created by": formatExportCell(row["Evaluator Email"] ?? row["evaluator_email"] ?? row["Staff ID"] ?? row["StaffID"]),
     [CRITERIA_SCORE_SUM_COLUMN]: pickStoredOrComputedScoreSum(row),
-    "Evaluator Feedback: What went well": formatExportCell(row["Evaluator Feedback: What went well"]),
-    "Evaluator Feedback: Areas to improve": formatExportCell(row["Evaluator Feedback: Areas to improve"]),
     [STUDENT_SELF_REFLECTION_COLUMN]: formatExportCell(row[STUDENT_SELF_REFLECTION_COLUMN]),
-    "Self Reflection Deadline": formatExportCell(row[SELF_REFLECTION_DEADLINE_COLUMN]),
   }));
 }
 
@@ -264,4 +278,14 @@ export function formatAssessmentRowDateDisplay(row: Record<string, unknown>): st
     return "—";
   }
   return d.toLocaleDateString(undefined, { dateStyle: "medium" });
+}
+
+export function formatAssessmentScoreWithFull(row: Record<string, unknown>): string {
+  const obtained = pickStoredOrComputedScoreSum(row).trim();
+  const formType = formatExportCell(row["Form Type"] ?? row["form_type"]);
+  const full = FULL_SCORE_BY_FORM_TYPE[formType];
+  if (!obtained) {
+    return full != null ? `—/${full}` : "—";
+  }
+  return full != null ? `${obtained}/${full}` : obtained;
 }

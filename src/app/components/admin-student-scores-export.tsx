@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import {
   buildCsvContent,
+  formatAssessmentScoreWithFull,
   buildLongFormatExportRows,
   buildPrunedSummaryRows,
   buildPrunedWideExport,
@@ -11,9 +12,9 @@ import {
   formatAssessmentRowDateDisplay,
   sanitizeExportFilenamePart,
 } from "../lib/admin-assessment-export";
+import { pickStoredOrComputedScoreSum } from "../lib/assessment-score-summation";
 import { pickAssessmentRowId, STUDENT_SELF_REFLECTION_COLUMN } from "../lib/student-feedback";
 import { t, useUiLanguage } from "../lib/ui-language";
-import { pickStoredOrComputedScoreSum } from "../lib/assessment-score-summation";
 
 type AssessmentRow = Record<string, unknown>;
 const NOW_MS = Date.now();
@@ -374,8 +375,8 @@ export function AdminStudentScoresExport({
                 <th className="px-3 py-3">{t(language, "Total score", "คะแนนรวม")}</th>
                 <th className="px-3 py-3">Date</th>
                 <th className="px-3 py-3">Status</th>
-                <th className="px-3 py-3">What went well</th>
-                <th className="px-3 py-3">Areas to improve</th>
+                <th className="px-3 py-3">{t(language, "Department", "แผนก")}</th>
+                <th className="px-3 py-3">{t(language, "Created by", "ผู้สร้างแบบประเมิน")}</th>
                 <th className="px-3 py-3">Student self-reflection</th>
               </tr>
             </thead>
@@ -383,25 +384,25 @@ export function AdminStudentScoresExport({
               {matchedRows.map((row, index) => {
                 const form = pickString(row, ["Form Type", "form_type"]);
                 const status = pickString(row, ["Status", "status"]);
-                const well = pickString(row, ["Evaluator Feedback: What went well"]);
-                const improve = pickString(row, ["Evaluator Feedback: Areas to improve"]);
+                const department = pickString(row, ["Department/Rotation", "Department"]);
+                const createdBy = pickString(row, ["Evaluator Email", "evaluator_email", "Staff ID", "StaffID"]);
                 const refl = pickString(row, [STUDENT_SELF_REFLECTION_COLUMN, "Student Self-Reflection"]);
                 const rid = pickAssessmentRowId(row as Record<string, unknown>);
                 return (
                   <tr key={rid || `export-${index}`} className="align-top text-slate-800">
                     <td className="px-3 py-2 font-medium">{form || "—"}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-slate-600 tabular-nums">
-                      {pickStoredOrComputedScoreSum(row) || "—"}
+                      {formatAssessmentScoreWithFull(row)}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 text-slate-600">
                       {formatAssessmentRowDateDisplay(row as Record<string, unknown>)}
                     </td>
                     <td className="px-3 py-2 text-slate-700">{status || "—"}</td>
-                    <td className="max-w-[min(28rem,40vw)] px-3 py-2 text-slate-600" title={well}>
-                      {well ? snippet(well) : "—"}
+                    <td className="max-w-[min(24rem,30vw)] px-3 py-2 text-slate-600" title={department}>
+                      {department || "—"}
                     </td>
-                    <td className="max-w-[min(28rem,40vw)] px-3 py-2 text-slate-600" title={improve}>
-                      {improve ? snippet(improve) : "—"}
+                    <td className="max-w-[min(28rem,40vw)] px-3 py-2 text-slate-600" title={createdBy}>
+                      {createdBy ? snippet(createdBy) : "—"}
                     </td>
                     <td className="max-w-[min(28rem,40vw)] px-3 py-2 text-slate-600" title={refl}>
                       {refl ? snippet(refl) : "—"}
